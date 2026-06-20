@@ -1,0 +1,18 @@
+# Apache config for Hostinger shared hosting (place in public_html root)
+# Serves Next.js static export and routes API to PHP folder
+
+<IfModule mod_rewrite.c>
+  RewriteEngine On
+
+  # API requests go to PHP backend
+  RewriteRule ^api/(.*)$ api/index.php [QSA,L]
+
+  # Serve existing files/directories
+  RewriteCond %{REQUEST_FILENAME} -f [OR]
+  RewriteCond %{REQUEST_FILENAME} -d
+  RewriteRule ^ - [L]
+
+  # SPA fallback for Next.js client routes
+  RewriteRule ^project/?$ project/index.html [L]
+  RewriteRule ^$ index.html [L]
+</IfModule>

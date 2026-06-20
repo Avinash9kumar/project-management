@@ -1,0 +1,16 @@
+# Dependencies
+node_modules/
+frontend/node_modules/
+
+# Build
+frontend/.next/
+frontend/out/
+
+# Environment
+.env
+.env.local
+api/config/config.local.php
+
+# OS
+.DS_Store
+Thumbs.db

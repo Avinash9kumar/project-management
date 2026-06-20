@@ -1,0 +1,20 @@
+# Apache config for Hostinger subdirectory
+# Upload as: public_html/project-management/.htaccess
+
+<IfModule mod_rewrite.c>
+  RewriteEngine On
+  RewriteBase /project-management/
+
+  # API → PHP backend
+  RewriteRule ^api/(.*)$ api/index.php [QSA,L]
+
+  # Serve existing files
+  RewriteCond %{REQUEST_FILENAME} -f [OR]
+  RewriteCond %{REQUEST_FILENAME} -d
+  RewriteRule ^ - [L]
+
+  # Next.js routes
+  RewriteRule ^login/?$ login/index.html [L]
+  RewriteRule ^project/?$ project/index.html [L]
+  RewriteRule ^$ index.html [L]
+</IfModule>

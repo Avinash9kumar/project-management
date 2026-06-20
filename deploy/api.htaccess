@@ -1,0 +1,12 @@
+# Apache config for API folder on Hostinger
+# Upload as: public_html/project-management/api/.htaccess
+
+RewriteEngine On
+RewriteBase /project-management/api/
+
+RewriteCond %{REQUEST_METHOD} OPTIONS
+RewriteRule ^(.*)$ index.php [L]
+
+RewriteCond %{REQUEST_FILENAME} !-f
+RewriteCond %{REQUEST_FILENAME} !-d
+RewriteRule ^(.*)$ index.php [QSA,L]
