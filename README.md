@@ -45,7 +45,7 @@ Edit `config.local.php`:
 'password' => '',
 'base_path' => '',          // empty for local
 'users' => [
-    'avinash' => 'avinash@11#11',
+    '' => '',
 ],
 ```
 
