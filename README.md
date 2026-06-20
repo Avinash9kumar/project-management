@@ -11,9 +11,6 @@ Stack: Next.js + PHP 8.1 + MySQL
 
 Username and password are set in `api/config/config.local.php`:
 
-| Username | Password |
-|----------|----------|
-| `avinash` | `avinash@11#11` |
 
 ---
 
@@ -60,7 +57,7 @@ Fill in your Hostinger MySQL credentials and keep:
 ```php
 'base_path' => '/project-management',
 'users' => [
-    'avinash' => 'avinash@11#11',
+    '' => '',
 ],
 ```
 
@@ -83,7 +80,7 @@ npm run dev
 ```
 
 Open: **http://localhost:3000**  
-Login: `avinash` / `avinash@11#11`
+Login: `` / ``
 
 ---
 
@@ -150,7 +147,7 @@ Edit `users` in `api/config/config.local.php`:
 
 ```php
 'users' => [
-    'avinash' => 'avinash@11#11',
+    '' => '@11#11',
     'another_user' => 'their_password',
 ],
 ```
