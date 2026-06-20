@@ -10,16 +10,17 @@ import {
   TIMELINE_TAB_LABELS,
 } from '@/lib/types';
 import {
-  getAssignToList,
+  getAssignCcList,
   joinAssignTo,
   itemToFormState,
+  itemToAssignState,
   toApiPayload,
   TimelineMode,
   TimelineItemInput,
   validateTimelineItemInput,
   showLaunchEndDateReminder,
 } from '@/lib/timeline-utils';
-import AssignToSelect from '@/components/AssignToSelect';
+import AssignEmailFields from '@/components/AssignEmailFields';
 import TimelineScheduleFields from '@/components/TimelineScheduleFields';
 
 function reportItemToTimelineItem(item: TimelineReportItem): TimelineItem {
@@ -57,7 +58,8 @@ export default function ReportTimelineEditModal({ item, onClose, onSave }: Props
   const timelineItem = item ? reportItemToTimelineItem(item) : null;
   const timelineType = item?.timeline_type as TimelineType;
 
-  const [assignees, setAssignees] = useState<string[]>([]);
+  const [mainAssign, setMainAssign] = useState('');
+  const [ccAssign, setCcAssign] = useState<string[]>([]);
   const [description, setDescription] = useState('');
   const [status, setStatus] = useState<ProjectStatus>('pending');
   const [timelineMode, setTimelineMode] = useState<TimelineMode>('date');
@@ -72,7 +74,9 @@ export default function ReportTimelineEditModal({ item, onClose, onSave }: Props
   useEffect(() => {
     if (!timelineItem) return;
     const s = itemToFormState(timelineItem);
-    setAssignees(getAssignToList(timelineItem));
+    const assign = itemToAssignState(timelineItem);
+    setMainAssign(assign.assign_main);
+    setCcAssign(getAssignCcList(timelineItem));
     setDescription(timelineItem.description || '');
     setStatus(timelineItem.status);
     setTimelineMode(s.timeline_mode);
@@ -95,7 +99,8 @@ export default function ReportTimelineEditModal({ item, onClose, onSave }: Props
 
     const input: TimelineItemInput = {
       timeline_mode: timelineMode,
-      assign_to: joinAssignTo(assignees),
+      assign_main: mainAssign,
+      assign_cc: joinAssignTo(ccAssign),
       description: description.trim(),
       status,
       start_date: startDate,
@@ -126,7 +131,11 @@ export default function ReportTimelineEditModal({ item, onClose, onSave }: Props
         custom_fields: payload.custom_fields,
       });
       if (result?.emailSent && result.emailSent > 0) {
-        setSuccess(`Update email sent to ${result.emailSent} assignee${result.emailSent === 1 ? '' : 's'}.`);
+        setSuccess(
+          result.emailSent === 1
+            ? 'Update email sent to main assignee.'
+            : `Update email sent to main assignee with ${result.emailSent - 1} CC.`
+        );
         setTimeout(onClose, 1200);
       } else {
         onClose();
@@ -155,11 +164,6 @@ export default function ReportTimelineEditModal({ item, onClose, onSave }: Props
         {success && <div className="alert-success mb-4">{success}</div>}
 
         <form onSubmit={handleSave} className="space-y-4 overflow-visible">
-          <div className="relative z-20 overflow-visible">
-            <label className="mb-1 block text-xs font-semibold text-slate-600">Assign to *</label>
-            <AssignToSelect value={assignees} onChange={setAssignees} />
-          </div>
-
           <TimelineScheduleFields
             mode={timelineMode}
             onModeChange={setTimelineMode}
@@ -192,6 +196,15 @@ export default function ReportTimelineEditModal({ item, onClose, onSave }: Props
               className="input-field min-h-[72px] text-sm"
               value={description}
               onChange={(e) => setDescription(e.target.value)}
+            />
+          </div>
+
+          <div className="relative z-20 overflow-visible">
+            <AssignEmailFields
+              mainAssign={mainAssign}
+              ccAssign={ccAssign}
+              onMainChange={setMainAssign}
+              onCcChange={setCcAssign}
             />
           </div>
 

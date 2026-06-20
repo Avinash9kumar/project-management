@@ -10,7 +10,8 @@ import {
   ProjectStatus,
 } from '@/lib/types';
 import {
-  getAssignToList,
+  getAssignMain,
+  getAssignCcList,
   formatTimelineRange,
   getItemScheduleStartMs,
   getItemScheduleEndMs,
@@ -131,7 +132,13 @@ export default function GanttChart({ items }: Props) {
 
           {/* Rows */}
           {datedItems.map((item, index) => {
-            const assignees = getAssignToList(item);
+            const main = getAssignMain(item);
+            const cc = getAssignCcList(item);
+            const assignLabel = main
+              ? cc.length
+                ? `${main} (CC: ${cc.join(', ')})`
+                : main
+              : 'Unassigned';
             const color = GANTT_COLORS[item.timeline_type as TimelineType] || '#64748b';
             const duration = formatDuration(getItemDurationMs(item));
             const barStyle = getBarStyle(item);
@@ -169,8 +176,8 @@ export default function GanttChart({ items }: Props) {
                           {STATUS_LABELS[item.status]}
                         </span>
                       </div>
-                      <p className="mt-1 truncate text-xs font-medium text-slate-800" title={assignees.join(', ')}>
-                        {assignees.join(', ') || 'Unassigned'}
+                      <p className="mt-1 truncate text-xs font-medium text-slate-800" title={assignLabel}>
+                        {assignLabel}
                       </p>
                       <p className="mt-0.5 truncate text-[10px] text-slate-400" title={formatTimelineRange(item)}>
                         {formatTimelineRange(item)}

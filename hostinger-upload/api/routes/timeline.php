@@ -62,7 +62,7 @@ function handleTimelineRoute(array $segments): void
             $custom = decodeItemCustomFields($row);
             $remaining = getTimelineRemainingSeconds($row, $now);
             $progress = getTimelineProgressPercent($row, $now);
-            $assignTo = trim((string) ($custom['assign_to'] ?? $row['title'] ?? ''));
+            $assignTo = formatAssignToDisplay($custom, trim((string) ($row['title'] ?? '')));
 
             $report[] = [
                 'id' => (int) $row['id'],
@@ -215,10 +215,10 @@ function handleTimelineRoute(array $segments): void
 
         $id = (int) $db->lastInsertId();
 
-        $assignTo = $title;
-        if (is_array($customFields) && isset($customFields['assign_to']) && is_string($customFields['assign_to'])) {
-            $assignTo = trim($customFields['assign_to']);
-        }
+        $assignTo = formatAssignToDisplay(
+            is_array($customFields) ? $customFields : [],
+            $title
+        );
 
         $authUser = getAuthUser();
         $notifications = sendTimelineAssigneeEmails(
@@ -310,10 +310,10 @@ function handleTimelineRoute(array $segments): void
             $projectStmt->execute([(int) $existing['project_id']]);
             $project = $projectStmt->fetch();
 
-            $assignTo = $title;
-            if (is_array($customFields) && isset($customFields['assign_to']) && is_string($customFields['assign_to'])) {
-                $assignTo = trim($customFields['assign_to']);
-            }
+            $assignTo = formatAssignToDisplay(
+                is_array($customFields) ? $customFields : [],
+                $title
+            );
 
             $authUser = getAuthUser();
             $notifications = ['sent' => 0, 'failed' => 0, 'skipped' => 0, 'recipients' => []];

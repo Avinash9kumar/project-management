@@ -16,6 +16,41 @@ import { formatTimelineRange, formatTimeRemaining, remainingUrgencyClass } from 
 import AuthGuard from '@/components/AuthGuard';
 import ReportTimelineEditModal from '@/components/ReportTimelineEditModal';
 
+type ReportStatusFilter = 'all' | 'pending' | 'in_progress' | 'overdue' | 'completed';
+
+const REPORT_STATUS_FILTERS: { id: ReportStatusFilter; label: string }[] = [
+  { id: 'all', label: 'All' },
+  { id: 'pending', label: 'Pending' },
+  { id: 'in_progress', label: 'In Progress' },
+  { id: 'overdue', label: 'Overdue' },
+  { id: 'completed', label: 'Completed' },
+];
+
+function isReportItemOverdue(item: TimelineReportItem): boolean {
+  return (
+    item.status !== 'completed' &&
+    item.remaining_seconds !== null &&
+    item.remaining_seconds < 0
+  );
+}
+
+function matchesReportStatusFilter(item: TimelineReportItem, filter: ReportStatusFilter): boolean {
+  switch (filter) {
+    case 'all':
+      return true;
+    case 'pending':
+      return item.status === 'pending';
+    case 'in_progress':
+      return item.status === 'in_progress';
+    case 'completed':
+      return item.status === 'completed';
+    case 'overdue':
+      return isReportItemOverdue(item);
+    default:
+      return true;
+  }
+}
+
 function statusBadgeClass(status: ProjectStatus) {
   switch (status) {
     case 'completed':
@@ -168,7 +203,7 @@ export default function ReportPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [search, setSearch] = useState('');
-  const [statusFilter, setStatusFilter] = useState<'all' | 'active' | 'completed'>('active');
+  const [statusFilter, setStatusFilter] = useState<ReportStatusFilter>('all');
   const [editingItem, setEditingItem] = useState<TimelineReportItem | null>(null);
 
   const loadReport = useCallback(async () => {
@@ -186,12 +221,7 @@ export default function ReportPage() {
   }, [loadReport]);
 
   const filtered = useMemo(() => {
-    let list = items;
-    if (statusFilter === 'active') {
-      list = list.filter((i) => i.status !== 'completed');
-    } else if (statusFilter === 'completed') {
-      list = list.filter((i) => i.status === 'completed');
-    }
+    let list = items.filter((i) => matchesReportStatusFilter(i, statusFilter));
 
     const q = search.toLowerCase().trim();
     if (!q) return list;
@@ -229,18 +259,30 @@ export default function ReportPage() {
     }
   };
 
-  const overdueCount = items.filter(
-    (i) => i.status !== 'completed' && i.remaining_seconds !== null && i.remaining_seconds < 0
-  ).length;
+  const filterCounts = useMemo(() => {
+    const counts: Record<ReportStatusFilter, number> = {
+      all: items.length,
+      pending: 0,
+      in_progress: 0,
+      overdue: 0,
+      completed: 0,
+    };
+
+    for (const item of items) {
+      if (item.status === 'pending') counts.pending++;
+      if (item.status === 'in_progress') counts.in_progress++;
+      if (item.status === 'completed') counts.completed++;
+      if (isReportItemOverdue(item)) counts.overdue++;
+    }
+
+    return counts;
+  }, [items]);
 
   return (
     <AuthGuard>
       <div className="page-enter space-y-6">
         <div>
           <h1 className="page-title">Timeline Report</h1>
-          <p className="page-subtitle mt-1">
-            All timelines across projects — sorted by least time remaining (most urgent first)
-          </p>
         </div>
 
         <div className="card flex flex-wrap items-center gap-3 p-4">
@@ -263,32 +305,36 @@ export default function ReportPage() {
             />
           </div>
 
-          <div className="flex gap-1 rounded-xl bg-slate-100 p-1">
-            {(['active', 'all', 'completed'] as const).map((f) => (
+          <div className="flex max-w-full gap-1 overflow-x-auto rounded-xl bg-slate-100 p-1">
+            {REPORT_STATUS_FILTERS.map(({ id, label }) => (
               <button
-                key={f}
+                key={id}
                 type="button"
-                onClick={() => setStatusFilter(f)}
-                className={`rounded-lg px-3 py-1.5 text-xs font-semibold capitalize transition ${
-                  statusFilter === f
-                    ? 'bg-white text-indigo-700 shadow-sm'
-                    : 'text-slate-600 hover:text-slate-900'
+                onClick={() => setStatusFilter(id)}
+                className={`flex shrink-0 items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-semibold transition ${
+                  statusFilter === id
+                    ? id === 'overdue'
+                      ? 'bg-white text-rose-700 shadow-sm ring-1 ring-rose-100'
+                      : 'bg-white text-indigo-700 shadow-sm'
+                    : id === 'overdue'
+                      ? 'text-rose-600 hover:text-rose-800'
+                      : 'text-slate-600 hover:text-slate-900'
                 }`}
               >
-                {f === 'active' ? 'Active' : f}
+                {label}
+                <span
+                  className={`rounded-md px-1.5 py-0.5 text-[10px] font-bold ${
+                    statusFilter === id
+                      ? id === 'overdue'
+                        ? 'bg-rose-100 text-rose-700'
+                        : 'bg-indigo-100 text-indigo-700'
+                      : 'bg-slate-200/80 text-slate-600'
+                  }`}
+                >
+                  {filterCounts[id]}
+                </span>
               </button>
             ))}
-          </div>
-
-          <div className="flex flex-wrap gap-2 text-sm">
-            <span className="rounded-xl bg-indigo-50 px-3 py-1.5 font-semibold text-indigo-700">
-              {filtered.length} items
-            </span>
-            {overdueCount > 0 && (
-              <span className="rounded-xl bg-rose-50 px-3 py-1.5 font-semibold text-rose-700">
-                {overdueCount} overdue
-              </span>
-            )}
           </div>
         </div>
 

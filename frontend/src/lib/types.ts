@@ -97,6 +97,13 @@ export interface CustomFieldDefinition {
   sort_order: number;
 }
 
+export interface Assignee {
+  id: number;
+  value: string;
+  sort_order: number;
+  created_at?: string;
+}
+
 export const STATUS_LABELS: Record<ProjectStatus, string> = {
   pending: 'Pending',
   in_progress: 'In Progress',

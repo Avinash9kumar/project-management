@@ -3,25 +3,40 @@
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { AuthProvider, useAuth } from '@/context/AuthContext';
+import { AssigneeProvider } from '@/context/AssigneeContext';
 
 function Header() {
   const { user, logout, loading } = useAuth();
   const pathname = usePathname();
-  const isProjects =
+  const isReport =
     pathname === '/' ||
     pathname === '/project-management/' ||
     pathname === '/project-management' ||
-    pathname?.startsWith('/project');
-  const isReport =
     pathname === '/report' ||
     pathname === '/report/' ||
     pathname?.endsWith('/report') ||
     pathname?.includes('/report/');
+  const isProjects =
+    pathname === '/projects' ||
+    pathname === '/projects/' ||
+    pathname?.startsWith('/projects/');
+  const isProjectDetail =
+    pathname === '/project' ||
+    pathname === '/project/' ||
+    pathname?.startsWith('/project/');
+  const isAssignees =
+    pathname === '/assignees' ||
+    pathname === '/assignees/' ||
+    pathname?.includes('/assignees/');
+  const isEmployee =
+    pathname === '/employee' ||
+    pathname === '/employee/' ||
+    pathname?.includes('/employee/');
 
   return (
     <header className="nav-dark sticky top-0 z-40">
       <div className="mx-auto flex max-w-7xl items-center justify-between px-4 py-3 sm:px-6">
-        <Link href="/" className="group flex items-center gap-3">
+        <Link href="/report/" className="group flex items-center gap-3">
           <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-gradient-to-br from-indigo-500 to-violet-600 text-sm font-bold text-white shadow-lg shadow-indigo-500/30 transition group-hover:scale-105">
             PM
           </div>
@@ -33,16 +48,6 @@ function Header() {
 
         <nav className="flex items-center gap-2 text-sm">
           <Link
-            href="/"
-            className={`rounded-lg px-3 py-1.5 font-medium transition ${
-              isProjects
-                ? 'bg-white/15 text-white'
-                : 'text-white/70 hover:bg-white/10 hover:text-white'
-            }`}
-          >
-            Projects
-          </Link>
-          <Link
             href="/report/"
             className={`rounded-lg px-3 py-1.5 font-medium transition ${
               isReport
@@ -51,6 +56,36 @@ function Header() {
             }`}
           >
             Report
+          </Link>
+          <Link
+            href="/projects/"
+            className={`rounded-lg px-3 py-1.5 font-medium transition ${
+              isProjects || isProjectDetail
+                ? 'bg-white/15 text-white'
+                : 'text-white/70 hover:bg-white/10 hover:text-white'
+            }`}
+          >
+            Projects
+          </Link>
+          <Link
+            href="/employee/"
+            className={`rounded-lg px-3 py-1.5 font-medium transition ${
+              isEmployee
+                ? 'bg-white/15 text-white'
+                : 'text-white/70 hover:bg-white/10 hover:text-white'
+            }`}
+          >
+            Employee
+          </Link>
+          <Link
+            href="/assignees/"
+            className={`rounded-lg px-3 py-1.5 font-medium transition ${
+              isAssignees
+                ? 'bg-white/15 text-white'
+                : 'text-white/70 hover:bg-white/10 hover:text-white'
+            }`}
+          >
+            Assignees
           </Link>
           {!loading && user && (
             <div className="ml-2 flex items-center gap-2 border-l border-white/15 pl-3">
@@ -94,7 +129,9 @@ function AppShell({ children }: { children: React.ReactNode }) {
 export default function Providers({ children }: { children: React.ReactNode }) {
   return (
     <AuthProvider>
-      <AppShell>{children}</AppShell>
+      <AssigneeProvider>
+        <AppShell>{children}</AppShell>
+      </AssigneeProvider>
     </AuthProvider>
   );
 }

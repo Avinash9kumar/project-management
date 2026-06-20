@@ -38,6 +38,7 @@ copy /Y "%SRC%\api\routes\timeline.php" "%DEST%\api\routes\" >nul
 copy /Y "%SRC%\api\routes\custom-fields.php" "%DEST%\api\routes\" >nul
 copy /Y "%SRC%\api\routes\export.php" "%DEST%\api\routes\" >nul
 copy /Y "%SRC%\api\routes\cron.php" "%DEST%\api\routes\" >nul
+copy /Y "%SRC%\api\routes\assignees.php" "%DEST%\api\routes\" >nul
 
 echo [3/4] Copying .htaccess files...
 copy /Y "%SRC%\deploy\project-management.htaccess" "%DEST%\.htaccess" >nul

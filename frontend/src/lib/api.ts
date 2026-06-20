@@ -1,4 +1,4 @@
-import { Project, TimelineItem, User, CustomFieldDefinition, TimelineReportItem } from './types';
+import { Project, TimelineItem, User, CustomFieldDefinition, TimelineReportItem, Assignee } from './types';
 import { appPath } from './config';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || '/api';
@@ -267,4 +267,22 @@ export async function downloadExport(projectId: number, format: 'excel' | 'pdf')
   a.download = filename;
   a.click();
   URL.revokeObjectURL(a.href);
+}
+
+// Assignees
+export async function getAssignees(): Promise<Assignee[]> {
+  const data = await request<{ assignees: Assignee[] }>('/assignees');
+  return data.assignees;
+}
+
+export async function createAssignee(value: string): Promise<Assignee> {
+  const data = await request<{ assignee: Assignee }>('/assignees', {
+    method: 'POST',
+    body: JSON.stringify({ value }),
+  });
+  return data.assignee;
+}
+
+export async function deleteAssignee(id: number): Promise<void> {
+  await request(`/assignees/${id}`, { method: 'DELETE' });
 }

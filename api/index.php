@@ -14,6 +14,7 @@ require_once __DIR__ . '/routes/timeline.php';
 require_once __DIR__ . '/routes/custom-fields.php';
 require_once __DIR__ . '/routes/export.php';
 require_once __DIR__ . '/routes/cron.php';
+require_once __DIR__ . '/routes/assignees.php';
 
 $appConfig = getAppConfig();
 $timezone = $appConfig['timezone'] ?? 'Asia/Kolkata';
@@ -83,6 +84,9 @@ try {
             break;
         case 'cron':
             handleCronRoute($segments);
+            break;
+        case 'assignees':
+            handleAssigneesRoute($segments);
             break;
         default:
             jsonResponse(['error' => 'Not found'], 404);

@@ -3,17 +3,19 @@
 import { useState } from 'react';
 import { TimelineItem, STATUS_LABELS } from '@/lib/types';
 import {
-  getAssignToList,
+  getAssignMain,
+  getAssignCcList,
   joinAssignTo,
   formatTimelineRange,
   itemToFormState,
+  itemToAssignState,
   toApiPayload,
   TimelineMode,
   TimelineItemInput,
   validateTimelineItemInput,
   showLaunchEndDateReminder,
 } from '@/lib/timeline-utils';
-import AssignToSelect from '@/components/AssignToSelect';
+import AssignEmailFields from '@/components/AssignEmailFields';
 import TimelineScheduleFields from '@/components/TimelineScheduleFields';
 
 interface Props {
@@ -100,8 +102,10 @@ function TimelineItemCard({
   onDelete: Props['onDelete'];
 }) {
   const formDefaults = itemToFormState(item);
+  const assignState = itemToAssignState(item);
   const [editing, setEditing] = useState(false);
-  const [assignees, setAssignees] = useState<string[]>(getAssignToList(item));
+  const [mainAssign, setMainAssign] = useState(assignState.assign_main);
+  const [ccAssign, setCcAssign] = useState<string[]>(getAssignCcList(item));
   const [description, setDescription] = useState(item.description || '');
   const [status, setStatus] = useState(item.status);
   const [timelineMode, setTimelineMode] = useState<TimelineMode>(formDefaults.timeline_mode);
@@ -115,7 +119,9 @@ function TimelineItemCard({
 
   const loadEditState = () => {
     const s = itemToFormState(item);
-    setAssignees(getAssignToList(item));
+    const assign = itemToAssignState(item);
+    setMainAssign(assign.assign_main);
+    setCcAssign(getAssignCcList(item));
     setDescription(item.description || '');
     setStatus(item.status);
     setTimelineMode(s.timeline_mode);
@@ -136,7 +142,8 @@ function TimelineItemCard({
   const handleSave = async () => {
     const input: TimelineItemInput = {
       timeline_mode: timelineMode,
-      assign_to: joinAssignTo(assignees),
+      assign_main: mainAssign,
+      assign_cc: joinAssignTo(ccAssign),
       description: description.trim(),
       status,
       start_date: startDate,
@@ -170,14 +177,19 @@ function TimelineItemCard({
       });
       setEditing(false);
       if (result?.emailSent && result.emailSent > 0) {
-        setEditSuccess(`Update email sent to ${result.emailSent} assignee${result.emailSent === 1 ? '' : 's'}.`);
+        setEditSuccess(
+          result.emailSent === 1
+            ? 'Update email sent to main assignee.'
+            : `Update email sent to main assignee with ${result.emailSent - 1} CC.`
+        );
       }
     } finally {
       setSaving(false);
     }
   };
 
-  const assigneeList = getAssignToList(item);
+  const mainAssignee = getAssignMain(item);
+  const ccList = getAssignCcList(item);
 
   return (
     <div className="timeline-card">
@@ -221,9 +233,13 @@ function TimelineItemCard({
                 onChange={(e) => setDescription(e.target.value)}
               />
             </div>
-            <div className="relative z-20">
-              <label className="mb-1 block text-xs font-semibold text-slate-600">Assign to *</label>
-              <AssignToSelect value={assignees} onChange={setAssignees} />
+            <div className="relative z-20 overflow-visible">
+              <AssignEmailFields
+                mainAssign={mainAssign}
+                ccAssign={ccAssign}
+                onMainChange={setMainAssign}
+                onCcChange={setCcAssign}
+              />
             </div>
             <div className="flex gap-2 pt-1">
               <button className="btn-primary px-4 py-2 text-xs" onClick={handleSave} disabled={saving}>
@@ -236,9 +252,14 @@ function TimelineItemCard({
           <>
             <div className="flex flex-wrap items-start justify-between gap-2">
               <div className="flex flex-wrap gap-1.5">
-                {assigneeList.map((email) => (
-                  <span key={email} className="rounded-lg bg-indigo-50 px-2 py-1 text-xs font-medium text-indigo-700 ring-1 ring-indigo-100">
-                    {email}
+                {mainAssignee && (
+                  <span className="rounded-lg bg-indigo-50 px-2 py-1 text-xs font-semibold text-indigo-700 ring-1 ring-indigo-100">
+                    To: {mainAssignee}
+                  </span>
+                )}
+                {ccList.map((email) => (
+                  <span key={email} className="rounded-lg bg-slate-100 px-2 py-1 text-xs font-medium text-slate-600 ring-1 ring-slate-200">
+                    CC: {email}
                   </span>
                 ))}
               </div>

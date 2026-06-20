@@ -21,7 +21,7 @@ export default function LoginPage() {
     try {
       await login(username, password);
       await refreshUser();
-      router.push('/');
+      router.push('/report/');
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Authentication failed');
     } finally {

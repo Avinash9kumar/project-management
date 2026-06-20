@@ -171,7 +171,7 @@ function ProjectDetailContent() {
     return (
       <div className="page-enter space-y-4">
         <div className="alert-error">{error || 'Project not found'}</div>
-        <Link href="/" className="btn-secondary inline-flex">← Back to Projects</Link>
+        <Link href="/projects/" className="btn-secondary inline-flex">← Back to Projects</Link>
       </div>
     );
   }
@@ -182,7 +182,7 @@ function ProjectDetailContent() {
     <div className="page-enter space-y-6">
       <div className="card overflow-hidden">
         <div className="bg-gradient-to-r from-indigo-600 to-violet-600 px-6 py-5 text-white">
-          <Link href="/" className="inline-flex items-center gap-1 text-xs font-medium text-indigo-100 transition hover:text-white">
+          <Link href="/projects/" className="inline-flex items-center gap-1 text-xs font-medium text-indigo-100 transition hover:text-white">
             <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
               <path strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7" />
             </svg>

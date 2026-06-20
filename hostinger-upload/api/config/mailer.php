@@ -48,6 +48,121 @@ function resolveAssigneeRecipients(string $assignTo, ?string $creatorUsername): 
     return array_values(array_unique($recipients));
 }
 
+function resolveSingleAssigneeEmail(string $assignee, ?string $creatorUsername): ?string
+{
+    $resolved = resolveAssigneeRecipients($assignee, $creatorUsername);
+
+    return $resolved[0] ?? null;
+}
+
+/** @return array{main: string, cc: string}|null */
+function parseLegacyAssignToString(string $value): ?array
+{
+    $value = trim($value);
+    if ($value === '') {
+        return null;
+    }
+
+    if (preg_match('/^(.+?)\s*\(CC:\s*(.+)\)\s*$/i', $value, $matches) === 1) {
+        return [
+            'main' => trim($matches[1]),
+            'cc' => trim($matches[2]),
+        ];
+    }
+
+    return null;
+}
+
+function formatMailAddressList(array $emails): string
+{
+    $formatted = [];
+    foreach ($emails as $email) {
+        $email = trim(strtolower((string) $email));
+        if ($email !== '' && filter_var($email, FILTER_VALIDATE_EMAIL)) {
+            $formatted[] = $email;
+        }
+    }
+
+    return implode(', ', array_values(array_unique($formatted)));
+}
+
+/** @return array{to: ?string, cc: string[]} */
+function resolveAssignmentRecipients(array $customFields, string $assignToFallback, ?string $creatorUsername): array
+{
+    $mainRaw = trim((string) ($customFields['assign_main'] ?? ''));
+    $ccRaw = trim((string) ($customFields['assign_cc'] ?? ''));
+
+    $legacyFromAssignTo = parseLegacyAssignToString(trim((string) ($customFields['assign_to'] ?? '')));
+    if ($legacyFromAssignTo !== null) {
+        if ($mainRaw === '') {
+            $mainRaw = $legacyFromAssignTo['main'];
+        }
+        if ($ccRaw === '') {
+            $ccRaw = $legacyFromAssignTo['cc'];
+        }
+    }
+
+    if ($mainRaw !== '') {
+        $to = resolveSingleAssigneeEmail($mainRaw, $creatorUsername);
+        $cc = $ccRaw !== '' ? resolveAssigneeRecipients($ccRaw, $creatorUsername) : [];
+        if ($to !== null) {
+            $cc = array_values(array_filter($cc, static fn (string $email): bool => $email !== $to));
+        }
+
+        return ['to' => $to, 'cc' => $cc];
+    }
+
+    $legacyFromFallback = parseLegacyAssignToString($assignToFallback);
+    if ($legacyFromFallback !== null) {
+        $to = resolveSingleAssigneeEmail($legacyFromFallback['main'], $creatorUsername);
+        $cc = $legacyFromFallback['cc'] !== ''
+            ? resolveAssigneeRecipients($legacyFromFallback['cc'], $creatorUsername)
+            : [];
+        if ($to !== null) {
+            $cc = array_values(array_filter($cc, static fn (string $email): bool => $email !== $to));
+        }
+
+        if ($to !== null) {
+            return ['to' => $to, 'cc' => $cc];
+        }
+    }
+
+    $all = resolveAssigneeRecipients($assignToFallback, $creatorUsername);
+    if ($all === []) {
+        return ['to' => null, 'cc' => []];
+    }
+
+    return [
+        'to' => $all[0],
+        'cc' => array_slice($all, 1),
+    ];
+}
+
+/** @return string[] */
+function getAllAssignmentRecipientEmails(array $customFields, string $assignToFallback, ?string $creatorUsername): array
+{
+    $assignment = resolveAssignmentRecipients($customFields, $assignToFallback, $creatorUsername);
+    if ($assignment['to'] === null) {
+        return [];
+    }
+
+    return array_values(array_unique(array_merge([$assignment['to']], $assignment['cc'])));
+}
+
+function formatAssignToDisplay(array $customFields, string $fallback = ''): string
+{
+    $main = trim((string) ($customFields['assign_main'] ?? ''));
+    $cc = trim((string) ($customFields['assign_cc'] ?? ''));
+
+    if ($main !== '') {
+        return $cc !== '' ? $main . ' (CC: ' . $cc . ')' : $main;
+    }
+
+    $legacy = trim((string) ($customFields['assign_to'] ?? ''));
+
+    return $legacy !== '' ? $legacy : $fallback;
+}
+
 function getTimelineTabHeading(string $timelineType): string
 {
     return TIMELINE_LABELS[$timelineType] ?? ucfirst(str_replace('_', ' ', $timelineType));
@@ -214,7 +329,7 @@ function buildTimelineEmailBody(
     return implode("\n", $lines);
 }
 
-function sendMailMessage(string $to, string $subject, string $body): bool
+function sendMailMessage(string $to, string $subject, string $body, array $cc = []): bool
 {
     $mailConfig = getMailConfig();
     $fromEmail = $mailConfig['from_email'];
@@ -230,7 +345,96 @@ function sendMailMessage(string $to, string $subject, string $body): bool
         'X-Mailer: PHP/' . PHP_VERSION,
     ];
 
+    if ($cc !== []) {
+        $ccHeader = formatMailAddressList($cc);
+        if ($ccHeader !== '') {
+            $headers[] = 'Cc: ' . $ccHeader;
+        }
+    }
+
     return @mail($to, $encodedSubject, $body, implode("\r\n", $headers));
+}
+
+function sendMailToAssignmentGroup(
+    string $primaryTo,
+    array $ccRecipients,
+    string $subject,
+    string $body
+): array {
+    $allRecipients = array_values(array_unique(array_merge([strtolower($primaryTo)], array_map('strtolower', $ccRecipients))));
+    $result = ['sent' => 0, 'failed' => 0, 'recipients' => []];
+
+    if ($allRecipients === []) {
+        return $result;
+    }
+
+    foreach ($allRecipients as $recipient) {
+        $others = array_values(array_filter(
+            $allRecipients,
+            static fn (string $email): bool => $email !== $recipient
+        ));
+
+        if (sendMailMessage($recipient, $subject, $body, $others)) {
+            $result['sent']++;
+            $result['recipients'][] = $recipient;
+        } else {
+            $result['failed']++;
+        }
+    }
+
+    return $result;
+}
+
+function sendTimelineEmailWithAssignment(
+    array $project,
+    string $timelineType,
+    string $status,
+    ?string $startDate,
+    ?string $dueDate,
+    array $customFields,
+    string $description,
+    int $itemId,
+    string $assignToFallback,
+    ?string $creatorUsername,
+    string $introLine,
+    ?string $subjectSuffix = null,
+    array $extraLines = []
+): array {
+    $mailConfig = getMailConfig();
+    $result = ['sent' => 0, 'failed' => 0, 'skipped' => 0, 'recipients' => []];
+
+    if (!($mailConfig['enabled'] ?? true)) {
+        $assignment = resolveAssignmentRecipients($customFields, $assignToFallback, $creatorUsername);
+        $result['skipped'] = ($assignment['to'] !== null ? 1 : 0) + count($assignment['cc']);
+        return $result;
+    }
+
+    $assignment = resolveAssignmentRecipients($customFields, $assignToFallback, $creatorUsername);
+    if ($assignment['to'] === null) {
+        return $result;
+    }
+
+    $subject = buildEmailSubject($project, $timelineType, $subjectSuffix ?? '');
+    $body = buildTimelineEmailBody(
+        $project,
+        $timelineType,
+        $status,
+        $startDate,
+        $dueDate,
+        $customFields,
+        $description,
+        $itemId,
+        $assignment['to'],
+        $introLine,
+        $extraLines
+    );
+
+    $delivery = sendMailToAssignmentGroup($assignment['to'], $assignment['cc'], $subject, $body);
+    $result['sent'] = $delivery['sent'];
+    $result['failed'] = $delivery['failed'];
+    $result['recipients'] = $delivery['recipients'];
+
+    return $result;
 }
 
 function sendTimelineAssigneeEmails(
@@ -247,45 +451,20 @@ function sendTimelineAssigneeEmails(
     ?string $introLine = null,
     ?string $subjectSuffix = null
 ): array {
-    $mailConfig = getMailConfig();
-    $result = ['sent' => 0, 'failed' => 0, 'skipped' => 0, 'recipients' => []];
-
-    if (!($mailConfig['enabled'] ?? true)) {
-        $result['skipped'] = count(resolveAssigneeRecipients($assignTo, $creatorUsername));
-        return $result;
-    }
-
-    $recipients = resolveAssigneeRecipients($assignTo, $creatorUsername);
-    if ($recipients === []) {
-        return $result;
-    }
-
-    $subject = buildEmailSubject($project, $timelineType, $subjectSuffix ?? '');
-    $intro = $introLine ?? 'You have been assigned a new timeline task.';
-
-    foreach ($recipients as $email) {
-        $body = buildTimelineEmailBody(
-            $project,
-            $timelineType,
-            $status,
-            $startDate,
-            $dueDate,
-            $customFields,
-            $description,
-            $itemId,
-            $email,
-            $intro
-        );
-
-        if (sendMailMessage($email, $subject, $body)) {
-            $result['sent']++;
-            $result['recipients'][] = $email;
-        } else {
-            $result['failed']++;
-        }
-    }
-
-    return $result;
+    return sendTimelineEmailWithAssignment(
+        $project,
+        $timelineType,
+        $status,
+        $startDate,
+        $dueDate,
+        $customFields,
+        $description,
+        $itemId,
+        $assignTo,
+        $creatorUsername,
+        $introLine ?? 'You have been assigned a new timeline task.',
+        $subjectSuffix
+    );
 }
 
 function decodeMailCustomFields(array $item): array
@@ -301,13 +480,9 @@ function decodeMailCustomFields(array $item): array
 function getAssignToFromItem(array $item): string
 {
     $custom = decodeMailCustomFields($item);
-    $assignTo = trim((string) ($custom['assign_to'] ?? ''));
+    $fallback = trim((string) ($item['title'] ?? ''));
 
-    if ($assignTo !== '') {
-        return $assignTo;
-    }
-
-    return trim((string) ($item['title'] ?? ''));
+    return formatAssignToDisplay($custom, $fallback);
 }
 
 function buildTimelineAdminAlertEmailBody(
@@ -379,7 +554,15 @@ function sendTimelinePassedAdminNotification(array $project, array $item): bool
         'A timeline task has passed its scheduled end time and is still not marked as completed.'
     );
 
-    return sendMailMessage($notifyEmail, $subject, $body);
+    $custom = decodeMailCustomFields($item);
+    $assignTo = getAssignToFromItem($item);
+    $ccRecipients = getAllAssignmentRecipientEmails($custom, $assignTo, null);
+    $ccRecipients = array_values(array_filter(
+        $ccRecipients,
+        static fn (string $email): bool => strtolower($email) !== strtolower($notifyEmail)
+    ));
+
+    return sendMailMessage($notifyEmail, $subject, $body, $ccRecipients);
 }
 
 function buildTimelineStatusUpdateEmailBody(
@@ -452,7 +635,15 @@ function sendTimelineStatusChangeNotification(
     $subject = buildEmailSubject($project, $timelineType, 'Status Updated to ' . formatStatusLabel($newStatus));
     $body = buildTimelineStatusUpdateEmailBody($project, $item, $previousStatus, $newStatus);
 
-    return sendMailMessage($notifyEmail, $subject, $body);
+    $custom = decodeMailCustomFields($item);
+    $assignTo = getAssignToFromItem($item);
+    $ccRecipients = getAllAssignmentRecipientEmails($custom, $assignTo, null);
+    $ccRecipients = array_values(array_filter(
+        $ccRecipients,
+        static fn (string $email): bool => strtolower($email) !== strtolower($notifyEmail)
+    ));
+
+    return sendMailMessage($notifyEmail, $subject, $body, $ccRecipients);
 }
 
 function appendCompletionCommentToDescription(?string $existingDescription, string $comment): ?string

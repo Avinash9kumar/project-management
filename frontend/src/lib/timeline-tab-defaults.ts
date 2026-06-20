@@ -3,7 +3,8 @@ import { TimelineMode } from './timeline-utils';
 
 export interface TimelineFormDefaults {
   timelineMode: TimelineMode;
-  assignees: string[];
+  assignMain: string;
+  assignCc: string[];
   status: ProjectStatus;
   endDurationHours: number;
 }
@@ -11,7 +12,8 @@ export interface TimelineFormDefaults {
 export function getTimelineFormDefaults(_timelineType: TimelineType): TimelineFormDefaults {
   return {
     timelineMode: 'date',
-    assignees: [],
+    assignMain: '',
+    assignCc: [],
     status: 'pending',
     endDurationHours: 1,
   };

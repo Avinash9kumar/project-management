@@ -51,6 +51,24 @@ CREATE TABLE IF NOT EXISTS custom_field_definitions (
   INDEX idx_timeline_type (timeline_type)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
+-- Assignee list (emails for timeline assignment)
+CREATE TABLE IF NOT EXISTS assignees (
+  id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+  value VARCHAR(255) NOT NULL,
+  sort_order INT UNSIGNED DEFAULT 0,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  UNIQUE KEY uk_assignee_value (value)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+INSERT IGNORE INTO assignees (value, sort_order) VALUES
+  ('avinash@ae-research.com', 0),
+  ('anupam@ae-research.com', 1),
+  ('aashish@ae-research.com', 2),
+  ('mansiha@ae-research.com', 3),
+  ('paritosh@ae-research.com', 4),
+  ('shahid@ae-research.com', 5),
+  ('projects@ae-research.com', 6);
+
 -- Default custom fields
 INSERT INTO custom_field_definitions (timeline_type, field_key, field_label, field_type, options_json, sort_order) VALUES
   ('programming', 'developer', 'Developer', 'text', NULL, 1),

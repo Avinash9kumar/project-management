@@ -1,5 +1,7 @@
 import { TimelineItem } from './types';
 
+export type TimelineAssignSource = Pick<TimelineItem, 'title' | 'custom_fields'>;
+
 export type TimelineMode = 'date' | 'same_day';
 
 export const MAX_END_DURATION_HOURS = 24;
@@ -137,19 +139,106 @@ export function joinAssignTo(emails: string[]): string {
   return emails.join(', ');
 }
 
-export function getAssignTo(item: TimelineItem): string {
+export function getAssignTo(item: TimelineAssignSource): string {
+  const main = item.custom_fields?.assign_main;
+  const cc = item.custom_fields?.assign_cc;
+  if (typeof main === 'string' && main.trim()) {
+    const ccStr = typeof cc === 'string' ? cc.trim() : '';
+    return ccStr ? `${main.trim()} (CC: ${ccStr})` : main.trim();
+  }
+
   const fromCustom = item.custom_fields?.assign_to;
   if (typeof fromCustom === 'string' && fromCustom.trim()) return fromCustom;
   return item.title || '';
 }
 
-export function getAssignToList(item: TimelineItem): string[] {
-  return parseAssignTo(getAssignTo(item));
+export function getAssignMain(item: TimelineAssignSource): string {
+  const main = item.custom_fields?.assign_main;
+  if (typeof main === 'string' && main.trim()) return main.trim();
+
+  const list = parseAssignTo(
+    typeof item.custom_fields?.assign_to === 'string'
+      ? item.custom_fields.assign_to
+      : item.title || ''
+  );
+  return list[0] || '';
+}
+
+export function getAssignCcList(item: TimelineAssignSource): string[] {
+  const cc = item.custom_fields?.assign_cc;
+  if (typeof cc === 'string' && cc.trim()) {
+    return parseAssignTo(cc).filter((email) => email !== getAssignMain(item));
+  }
+
+  const list = parseAssignTo(
+    typeof item.custom_fields?.assign_to === 'string'
+      ? item.custom_fields.assign_to
+      : item.title || ''
+  );
+  if (list.length <= 1) return [];
+  return list.slice(1);
+}
+
+export function getAssignToList(item: TimelineAssignSource): string[] {
+  const main = getAssignMain(item);
+  if (!main) return parseAssignTo(getAssignTo(item));
+  const cc = getAssignCcList(item);
+  return [main, ...cc];
+}
+
+export type EmployeeAssignRole = 'main' | 'cc';
+
+function assigneeIdentityVariants(value: string): string[] {
+  const trimmed = value.trim();
+  if (!trimmed) return [];
+
+  if (trimmed.toLowerCase() === 'self') {
+    return ['Self', 'avinash@ae-research.com'];
+  }
+
+  return [trimmed];
+}
+
+export function assigneesMatch(a: string, b: string): boolean {
+  const left = assigneeIdentityVariants(a).map((v) => v.toLowerCase());
+  const right = assigneeIdentityVariants(b).map((v) => v.toLowerCase());
+  return left.some((v) => right.includes(v));
+}
+
+export function getEmployeeAssignRole(
+  item: TimelineAssignSource,
+  assignee: string
+): EmployeeAssignRole | null {
+  if (!assignee.trim()) return null;
+
+  const main = getAssignMain(item);
+  if (main && assigneesMatch(main, assignee)) return 'main';
+
+  const ccList = getAssignCcList(item);
+  if (ccList.some((cc) => assigneesMatch(cc, assignee))) return 'cc';
+
+  return null;
+}
+
+export function isAssignedToEmployee(item: TimelineAssignSource, assignee: string): boolean {
+  return getEmployeeAssignRole(item, assignee) !== null;
+}
+
+export function isMainAssigneeForEmployee(item: TimelineAssignSource, assignee: string): boolean {
+  return getEmployeeAssignRole(item, assignee) === 'main';
+}
+
+export function itemToAssignState(item: TimelineItem) {
+  return {
+    assign_main: getAssignMain(item),
+    assign_cc: joinAssignTo(getAssignCcList(item)),
+  };
 }
 
 export interface TimelineItemInput {
   timeline_mode: TimelineMode;
-  assign_to: string;
+  assign_main: string;
+  assign_cc: string;
   description: string;
   status: string;
   start_date: string;
@@ -159,8 +248,8 @@ export interface TimelineItemInput {
 }
 
 export function validateTimelineItemInput(data: TimelineItemInput): string | null {
-  if (!parseAssignTo(data.assign_to).length) {
-    return 'Assign to is required';
+  if (!data.assign_main.trim()) {
+    return 'Main assign is required';
   }
   if (!data.status) {
     return 'Status is required';
@@ -189,10 +278,14 @@ export function showLaunchEndDateReminder(timelineType: string): void {
 }
 
 export function toApiPayload(data: TimelineItemInput) {
-  const assignTo = data.assign_to.trim();
+  const main = data.assign_main.trim();
+  const cc = data.assign_cc.trim();
+  const assignToDisplay = cc ? `${main} (CC: ${cc})` : main;
   const base: Record<string, string | number> = {
     timeline_mode: data.timeline_mode,
-    assign_to: assignTo,
+    assign_main: main,
+    assign_cc: cc,
+    assign_to: assignToDisplay,
   };
 
   if (data.timeline_mode === 'same_day') {
@@ -205,7 +298,7 @@ export function toApiPayload(data: TimelineItemInput) {
     const { endDate, endTime } = addHoursToDateTime(day, startTime, duration);
 
     return {
-      title: assignTo,
+      title: main,
       description: data.description.trim(),
       status: data.status,
       start_date: day,
@@ -220,7 +313,7 @@ export function toApiPayload(data: TimelineItemInput) {
   }
 
   return {
-    title: assignTo,
+    title: main,
     description: data.description.trim(),
     status: data.status,
     start_date: data.start_date,

@@ -184,21 +184,8 @@ function sendTimelineReminderEmails(
     string $assignTo,
     int $threshold
 ): array {
-    $mailConfig = getMailConfig();
-    $result = ['sent' => 0, 'failed' => 0, 'skipped' => 0, 'recipients' => []];
-
     if (isTimelineItemCompleted($item)) {
-        $result['skipped'] = 1;
-        return $result;
-    }
-
-    if (!($mailConfig['enabled'] ?? true)) {
-        return $result;
-    }
-
-    $recipients = resolveAssigneeRecipients($assignTo, null);
-    if ($recipients === []) {
-        return $result;
+        return ['sent' => 0, 'failed' => 0, 'skipped' => 1, 'recipients' => []];
     }
 
     $custom = decodeItemCustomFields($item);
@@ -208,32 +195,23 @@ function sendTimelineReminderEmails(
     $itemId = (int) ($item['id'] ?? 0);
 
     [$intro, $extraLines] = reminderContentForThreshold($threshold);
-    $subject = buildEmailSubject($project, $timelineType, reminderSubjectSuffix($threshold));
+    $subjectSuffix = reminderSubjectSuffix($threshold);
 
-    foreach ($recipients as $email) {
-        $body = buildTimelineEmailBody(
-            $project,
-            $timelineType,
-            $status,
-            $item['start_date'] ?? null,
-            $item['due_date'] ?? null,
-            $custom,
-            $description,
-            $itemId,
-            $email,
-            $intro,
-            $extraLines
-        );
-
-        if (sendMailMessage($email, $subject, $body)) {
-            $result['sent']++;
-            $result['recipients'][] = $email;
-        } else {
-            $result['failed']++;
-        }
-    }
-
-    return $result;
+    return sendTimelineEmailWithAssignment(
+        $project,
+        $timelineType,
+        $status,
+        $item['start_date'] ?? null,
+        $item['due_date'] ?? null,
+        $custom,
+        $description,
+        $itemId,
+        $assignTo,
+        null,
+        $intro,
+        $subjectSuffix,
+        $extraLines
+    );
 }
 
 function sendTimelineOverdueAssigneeEmail(
@@ -241,17 +219,8 @@ function sendTimelineOverdueAssigneeEmail(
     array $item,
     string $assignTo
 ): array {
-    $mailConfig = getMailConfig();
-    $result = ['sent' => 0, 'failed' => 0, 'skipped' => 0, 'recipients' => []];
-
-    if (isTimelineItemCompleted($item) || !($mailConfig['enabled'] ?? true)) {
-        $result['skipped'] = 1;
-        return $result;
-    }
-
-    $recipients = resolveAssigneeRecipients($assignTo, null);
-    if ($recipients === []) {
-        return $result;
+    if (isTimelineItemCompleted($item)) {
+        return ['sent' => 0, 'failed' => 0, 'skipped' => 1, 'recipients' => []];
     }
 
     $custom = decodeItemCustomFields($item);
@@ -260,39 +229,28 @@ function sendTimelineOverdueAssigneeEmail(
     $status = (string) ($item['status'] ?? 'pending');
     $itemId = (int) ($item['id'] ?? 0);
 
-    $intro = 'The scheduled window for this task has ended. '
-        . 'If you have finished the work, please mark it as completed using the link below. '
-        . 'If you need more time, no action is required — this is just a gentle status check.';
+    $intro = "The scheduled window for this task has ended. If you have finished the work, please mark it as completed using the link below.\n\n"
+        . 'If the task is not yet completed, please contact your manager Avinash (avinash@ae-research.com) immediately for further action.';
     $extraLines = [
         'NOTE',
         '  The scheduled end time has been reached.',
     ];
-    $subject = buildEmailSubject($project, $timelineType, 'Schedule Ended — Please Update Status');
 
-    foreach ($recipients as $email) {
-        $body = buildTimelineEmailBody(
-            $project,
-            $timelineType,
-            $status,
-            $item['start_date'] ?? null,
-            $item['due_date'] ?? null,
-            $custom,
-            $description,
-            $itemId,
-            $email,
-            $intro,
-            $extraLines
-        );
-
-        if (sendMailMessage($email, $subject, $body)) {
-            $result['sent']++;
-            $result['recipients'][] = $email;
-        } else {
-            $result['failed']++;
-        }
-    }
-
-    return $result;
+    return sendTimelineEmailWithAssignment(
+        $project,
+        $timelineType,
+        $status,
+        $item['start_date'] ?? null,
+        $item['due_date'] ?? null,
+        $custom,
+        $description,
+        $itemId,
+        $assignTo,
+        null,
+        $intro,
+        'Schedule Ended — Please Update Status',
+        $extraLines
+    );
 }
 
 function markRemindersSent(PDO $db, int $itemId, array $customFields, array $newThresholds): void

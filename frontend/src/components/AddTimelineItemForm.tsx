@@ -11,7 +11,7 @@ import {
   showLaunchEndDateReminder,
 } from '@/lib/timeline-utils';
 import { getTimelineFormDefaults } from '@/lib/timeline-tab-defaults';
-import AssignToSelect from '@/components/AssignToSelect';
+import AssignEmailFields from '@/components/AssignEmailFields';
 import TimelineScheduleFields from '@/components/TimelineScheduleFields';
 
 interface Props {
@@ -23,7 +23,8 @@ interface Props {
 export default function AddTimelineItemForm({ timelineType, timelineLabel, onSubmit }: Props) {
   const tabDefaults = getTimelineFormDefaults(timelineType);
 
-  const [assignees, setAssignees] = useState<string[]>(tabDefaults.assignees);
+  const [mainAssign, setMainAssign] = useState(tabDefaults.assignMain);
+  const [ccAssign, setCcAssign] = useState<string[]>(tabDefaults.assignCc);
   const [description, setDescription] = useState('');
   const [status, setStatus] = useState<ProjectStatus>(tabDefaults.status);
   const [timelineMode, setTimelineMode] = useState(tabDefaults.timelineMode);
@@ -37,7 +38,8 @@ export default function AddTimelineItemForm({ timelineType, timelineLabel, onSub
 
   const applyTabDefaults = () => {
     const defaults = getTimelineFormDefaults(timelineType);
-    setAssignees(defaults.assignees);
+    setMainAssign(defaults.assignMain);
+    setCcAssign(defaults.assignCc);
     setDescription('');
     setStatus(defaults.status);
     setTimelineMode(defaults.timelineMode);
@@ -58,7 +60,8 @@ export default function AddTimelineItemForm({ timelineType, timelineLabel, onSub
 
     const input: TimelineItemInput = {
       timeline_mode: timelineMode,
-      assign_to: joinAssignTo(assignees),
+      assign_main: mainAssign,
+      assign_cc: joinAssignTo(ccAssign),
       description: description.trim(),
       status,
       start_date: startDate,
@@ -80,7 +83,11 @@ export default function AddTimelineItemForm({ timelineType, timelineLabel, onSub
       const result = await onSubmit(input);
       applyTabDefaults();
       if (result?.emailSent && result.emailSent > 0) {
-        setSuccess(`Email invite sent to ${result.emailSent} assignee${result.emailSent === 1 ? '' : 's'}.`);
+        setSuccess(
+          result.emailSent === 1
+            ? 'Assignment email sent to main assignee.'
+            : `Assignment email sent to main assignee with ${result.emailSent - 1} CC.`
+        );
       } else {
         setSuccess('Timeline item added successfully.');
       }
@@ -109,11 +116,6 @@ export default function AddTimelineItemForm({ timelineType, timelineLabel, onSub
       {success && <div className="alert-success mb-4 text-xs">{success}</div>}
 
       <div className="space-y-4 overflow-visible">
-        <div className="relative z-20 overflow-visible">
-          <label className="mb-1 block text-xs font-semibold text-slate-600">Assign to *</label>
-          <AssignToSelect value={assignees} onChange={setAssignees} />
-        </div>
-
         <TimelineScheduleFields
           mode={timelineMode}
           onModeChange={setTimelineMode}
@@ -147,6 +149,15 @@ export default function AddTimelineItemForm({ timelineType, timelineLabel, onSub
             placeholder="Add details about this task..."
             value={description}
             onChange={(e) => setDescription(e.target.value)}
+          />
+        </div>
+
+        <div className="relative z-20 overflow-visible">
+          <AssignEmailFields
+            mainAssign={mainAssign}
+            ccAssign={ccAssign}
+            onMainChange={setMainAssign}
+            onCcChange={setCcAssign}
           />
         </div>
       </div>
