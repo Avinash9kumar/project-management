@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from 'react';
 import {
   TimelineMode,
+  DateEndSlot,
   todayISO,
   currentTimeSlot,
   generateTimeOptions,
@@ -12,6 +13,8 @@ import {
   formatTime12,
   formatEndDurationDetail,
   EndDurationOption,
+  DATE_END_SLOT_OPTIONS,
+  DEFAULT_DATE_END_SLOT,
 } from '@/lib/timeline-utils';
 
 interface Props {
@@ -19,10 +22,12 @@ interface Props {
   onModeChange: (mode: TimelineMode) => void;
   startDate: string;
   endDate: string;
+  endDateSlot: DateEndSlot;
   startTime: string;
   endDurationHours: number;
   onStartDateChange: (v: string) => void;
   onEndDateChange: (v: string) => void;
+  onEndDateSlotChange: (v: DateEndSlot) => void;
   onStartTimeChange: (v: string) => void;
   onEndDurationChange: (v: number) => void;
 }
@@ -167,10 +172,12 @@ export default function TimelineScheduleFields({
   onModeChange,
   startDate,
   endDate,
+  endDateSlot,
   startTime,
   endDurationHours,
   onStartDateChange,
   onEndDateChange,
+  onEndDateSlotChange,
   onStartTimeChange,
   onEndDurationChange,
 }: Props) {
@@ -197,6 +204,7 @@ export default function TimelineScheduleFields({
             onModeChange('same_day');
             if (!startDate) onStartDateChange(todayISO());
             onStartTimeChange(currentTimeSlot());
+            onEndDateSlotChange(DEFAULT_DATE_END_SLOT);
           }}
           className={`flex-1 rounded px-2 py-1.5 font-medium transition ${
             mode === 'same_day' ? 'bg-blue-600 text-white' : 'text-slate-600 hover:bg-slate-50'
@@ -207,24 +215,51 @@ export default function TimelineScheduleFields({
       </div>
 
       {mode === 'date' ? (
-        <div className="grid grid-cols-2 gap-2">
-          <div>
-            <label className="mb-0.5 block text-xs text-slate-600">Start date *</label>
-            <input
-              type="date"
-              className="input-field h-8 text-sm"
-              value={startDate}
-              onChange={(e) => onStartDateChange(e.target.value)}
-            />
+        <div className="space-y-1.5">
+          <div className="grid grid-cols-2 gap-2">
+            <div>
+              <label className="mb-0.5 block text-xs text-slate-600">Start date *</label>
+              <input
+                type="date"
+                className="input-field h-8 text-sm"
+                value={startDate}
+                onChange={(e) => onStartDateChange(e.target.value)}
+              />
+            </div>
+            <div>
+              <label className="mb-0.5 block text-xs text-slate-600">End date *</label>
+              <input
+                type="date"
+                className="input-field h-8 text-sm"
+                value={endDate}
+                min={startDate || undefined}
+                onChange={(e) => onEndDateChange(e.target.value)}
+              />
+            </div>
           </div>
           <div>
-            <label className="mb-0.5 block text-xs text-slate-600">End date *</label>
-            <input
-              type="date"
-              className="input-field h-8 text-sm"
-              value={endDate}
-              onChange={(e) => onEndDateChange(e.target.value)}
-            />
+            <label className="mb-0.5 block text-[10px] text-slate-500">End time on due date</label>
+            <div className="flex flex-wrap gap-1">
+              {DATE_END_SLOT_OPTIONS.map((opt) => {
+                const on = endDateSlot === opt.value;
+                return (
+                  <button
+                    key={opt.value}
+                    type="button"
+                    title={opt.short}
+                    aria-pressed={on}
+                    onClick={() => onEndDateSlotChange(opt.value)}
+                    className={`rounded px-2 py-1 text-[10px] font-semibold leading-none transition ${
+                      on
+                        ? 'bg-blue-600 text-white'
+                        : 'bg-white text-slate-600 ring-1 ring-slate-200 hover:ring-blue-300'
+                    }`}
+                  >
+                    {opt.label} <span className="font-normal opacity-80">({opt.short})</span>
+                  </button>
+                );
+              })}
+            </div>
           </div>
         </div>
       ) : (

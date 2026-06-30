@@ -2,7 +2,6 @@
 
 import { useState } from 'react';
 import { useAssignees } from '@/context/AssigneeContext';
-import { SELF_ASSIGNEE } from '@/lib/assignees';
 
 interface Props {
   variant?: 'page' | 'panel';
@@ -115,11 +114,6 @@ export default function AssigneeManager({ variant = 'panel' }: Props) {
           </ul>
         </div>
       )}
-
-      <p className="mt-3 text-xs text-slate-400">
-        <strong className="font-medium text-slate-500">{SELF_ASSIGNEE}</strong> is always available in
-        timelines (maps to your account email) and is not listed here.
-      </p>
     </div>
   );
 

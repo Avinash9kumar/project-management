@@ -7,7 +7,9 @@ import {
   TimelineType,
   ProjectStatus,
   STATUS_LABELS,
+  statusOptionsForSelect,
   TIMELINE_TAB_LABELS,
+  CustomFieldValue,
 } from '@/lib/types';
 import {
   getAssignCcList,
@@ -19,9 +21,13 @@ import {
   TimelineItemInput,
   validateTimelineItemInput,
   showLaunchEndDateReminder,
+  DEFAULT_OPTIONAL_REMINDER_PERCENTS,
+  DEFAULT_DATE_END_SLOT,
+  DateEndSlot,
 } from '@/lib/timeline-utils';
 import AssignEmailFields from '@/components/AssignEmailFields';
 import TimelineScheduleFields from '@/components/TimelineScheduleFields';
+import ReminderTriggerFields from '@/components/ReminderTriggerFields';
 
 function reportItemToTimelineItem(item: TimelineReportItem): TimelineItem {
   return {
@@ -49,7 +55,7 @@ interface Props {
       status: string;
       start_date: string;
       due_date: string;
-      custom_fields: Record<string, string | number>;
+      custom_fields: Record<string, CustomFieldValue>;
     }>
   ) => Promise<{ emailSent?: number } | void>;
 }
@@ -61,12 +67,14 @@ export default function ReportTimelineEditModal({ item, onClose, onSave }: Props
   const [mainAssign, setMainAssign] = useState('');
   const [ccAssign, setCcAssign] = useState<string[]>([]);
   const [description, setDescription] = useState('');
-  const [status, setStatus] = useState<ProjectStatus>('pending');
+  const [status, setStatus] = useState<ProjectStatus>('in_progress');
   const [timelineMode, setTimelineMode] = useState<TimelineMode>('date');
   const [startDate, setStartDate] = useState('');
   const [endDate, setEndDate] = useState('');
   const [startTime, setStartTime] = useState('');
   const [endDurationHours, setEndDurationHours] = useState(1);
+  const [endDateSlot, setEndDateSlot] = useState<DateEndSlot>(DEFAULT_DATE_END_SLOT);
+  const [reminderPercents, setReminderPercents] = useState<number[]>([...DEFAULT_OPTIONAL_REMINDER_PERCENTS]);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
@@ -84,6 +92,8 @@ export default function ReportTimelineEditModal({ item, onClose, onSave }: Props
     setEndDate(s.end_date);
     setStartTime(s.start_time);
     setEndDurationHours(s.end_duration_hours);
+    setEndDateSlot(s.date_end_slot);
+    setReminderPercents(s.reminder_percents);
     setError('');
     setSuccess('');
   }, [timelineItem, item?.id]);
@@ -107,6 +117,8 @@ export default function ReportTimelineEditModal({ item, onClose, onSave }: Props
       end_date: endDate,
       start_time: startTime,
       end_duration_hours: endDurationHours,
+      date_end_slot: endDateSlot,
+      reminder_percents: reminderPercents,
     };
 
     const validationError = validateTimelineItemInput(input);
@@ -169,12 +181,25 @@ export default function ReportTimelineEditModal({ item, onClose, onSave }: Props
             onModeChange={setTimelineMode}
             startDate={startDate}
             endDate={endDate}
+            endDateSlot={endDateSlot}
             startTime={startTime}
             endDurationHours={endDurationHours}
             onStartDateChange={setStartDate}
             onEndDateChange={setEndDate}
+            onEndDateSlotChange={setEndDateSlot}
             onStartTimeChange={setStartTime}
             onEndDurationChange={setEndDurationHours}
+          />
+
+          <ReminderTriggerFields
+            timelineMode={timelineMode}
+            startDate={startDate}
+            endDate={endDate}
+            endDateSlot={endDateSlot}
+            startTime={startTime}
+            endDurationHours={endDurationHours}
+            reminderPercents={reminderPercents}
+            onReminderPercentsChange={setReminderPercents}
           />
 
           <div>
@@ -184,8 +209,8 @@ export default function ReportTimelineEditModal({ item, onClose, onSave }: Props
               value={status}
               onChange={(e) => setStatus(e.target.value as ProjectStatus)}
             >
-              {Object.entries(STATUS_LABELS).map(([v, l]) => (
-                <option key={v} value={v}>{l}</option>
+              {statusOptionsForSelect(status).map((v) => (
+                <option key={v} value={v}>{STATUS_LABELS[v]}</option>
               ))}
             </select>
           </div>

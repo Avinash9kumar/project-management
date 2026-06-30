@@ -38,7 +38,19 @@ export const TIMELINE_TAB_LABELS: Record<TimelineType | 'gantt', string> = {
   project_end_date: 'End Date',
 };
 
-export type ProjectStatus = 'pending' | 'in_progress' | 'completed';
+export type ProjectStatus = 'pending' | 'in_progress' | 'hold' | 'completed';
+
+/** Status options shown in ticket create/edit dropdowns */
+export const TICKET_STATUS_OPTIONS: ProjectStatus[] = ['in_progress', 'hold', 'completed'];
+
+export function statusOptionsForSelect(current?: ProjectStatus): ProjectStatus[] {
+  if (current === 'pending') {
+    return ['pending', ...TICKET_STATUS_OPTIONS];
+  }
+  return [...TICKET_STATUS_OPTIONS];
+}
+
+export type CustomFieldValue = string | number | number[];
 
 export interface User {
   id: number;
@@ -65,7 +77,7 @@ export interface TimelineItem {
   start_date: string | null;
   due_date: string | null;
   sort_order: number;
-  custom_fields?: Record<string, string | number>;
+  custom_fields?: Record<string, CustomFieldValue>;
   created_at?: string;
   updated_at?: string;
 }
@@ -81,7 +93,7 @@ export interface TimelineReportItem {
   status: ProjectStatus;
   start_date: string | null;
   due_date: string | null;
-  custom_fields?: Record<string, string | number>;
+  custom_fields?: Record<string, CustomFieldValue>;
   assign_to: string;
   remaining_seconds: number | null;
   progress_percent: number | null;
@@ -107,12 +119,14 @@ export interface Assignee {
 export const STATUS_LABELS: Record<ProjectStatus, string> = {
   pending: 'Pending',
   in_progress: 'In Progress',
+  hold: 'Hold',
   completed: 'Completed',
 };
 
 export const STATUS_COLORS: Record<ProjectStatus, string> = {
   pending: 'bg-slate-100 text-slate-700',
   in_progress: 'bg-amber-100 text-amber-800',
+  hold: 'bg-violet-100 text-violet-800',
   completed: 'bg-green-100 text-green-800',
 };
 

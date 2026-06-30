@@ -27,9 +27,7 @@ return [
     'cron_secret' => 'dash-bot-cron-reminders-2026',
     'timezone' => 'Asia/Kolkata',
 
-    'users' => [
-        'avinash' => 'avinash@11#11',
-    ],
+    // Login: password = {username}@11#11
 
     'mail' => [
         'enabled' => true,

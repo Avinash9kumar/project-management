@@ -15,7 +15,5 @@ return [
 
     'auth_secret' => 'local-dev-secret-key',
 
-    'users' => [
-        'avinash' => 'avinash@11#11',
-    ],
+    // Login: password = {username}@11#11
 ];

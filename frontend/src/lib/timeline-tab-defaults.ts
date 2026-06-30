@@ -14,7 +14,7 @@ export function getTimelineFormDefaults(_timelineType: TimelineType): TimelineFo
     timelineMode: 'date',
     assignMain: '',
     assignCc: [],
-    status: 'pending',
+    status: 'in_progress',
     endDurationHours: 1,
   };
 }

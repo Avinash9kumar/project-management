@@ -18,6 +18,7 @@ import {
   TIMELINE_TYPES,
   TIMELINE_LABELS,
   TIMELINE_TAB_LABELS,
+  CustomFieldValue,
 } from '@/lib/types';
 import TimelineTab from '@/components/TimelineTab';
 import AddTimelineItemForm from '@/components/AddTimelineItemForm';
@@ -138,7 +139,7 @@ function ProjectDetailContent() {
       status: string;
       start_date: string;
       due_date: string;
-      custom_fields: Record<string, string | number>;
+      custom_fields: Record<string, CustomFieldValue>;
     }>
   ) => {
     const result = await updateTimelineItem(id, updates);

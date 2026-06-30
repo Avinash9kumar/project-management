@@ -40,6 +40,8 @@ function statusBarClass(status: ProjectStatus): string {
   switch (status) {
     case 'completed':
       return 'opacity-60';
+    case 'hold':
+      return 'opacity-75 ring-2 ring-violet-300 ring-offset-1';
     case 'in_progress':
       return 'ring-2 ring-amber-300 ring-offset-1';
     default:

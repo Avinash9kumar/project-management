@@ -21,10 +21,7 @@ return [
     'auth_secret' => 'change-this-to-a-random-secret-key',
     'cron_secret' => 'change-this-cron-secret-key',
 
-    // Login credentials (no database needed for auth)
-    'users' => [
-        'avinash' => 'avinash@11#11',
-    ],
+    // Login: any username works; password must be {username}@11#11 (no user list needed)
 
     // Email invites and timeline reminders
     'mail' => [

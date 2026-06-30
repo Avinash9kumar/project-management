@@ -2,7 +2,6 @@
 
 import { useState, useRef, useEffect, useMemo } from 'react';
 import { useAssignees } from '@/context/AssigneeContext';
-import { SELF_ASSIGNEE } from '@/lib/assignees';
 
 interface Props {
   value: string[];
@@ -24,7 +23,7 @@ export default function AssignToSelect({ value, onChange }: Props) {
   const [deletingId, setDeletingId] = useState<number | null>(null);
   const ref = useRef<HTMLDivElement>(null);
 
-  const options = useMemo(() => [SELF_ASSIGNEE, ...assigneeValues], [assigneeValues]);
+  const options = useMemo(() => assigneeValues, [assigneeValues]);
 
   useEffect(() => {
     setDraft(value);

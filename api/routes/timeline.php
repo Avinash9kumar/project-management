@@ -32,7 +32,7 @@ if (!function_exists('timelineScheduleChanged')) {
             return true;
         }
 
-        foreach (['timeline_mode', 'start_time', 'end_time', 'end_duration_hours'] as $key) {
+        foreach (['timeline_mode', 'start_time', 'end_time', 'end_duration_hours', 'date_end_slot'] as $key) {
             if (($existingCustom[$key] ?? null) != ($customFields[$key] ?? null)) {
                 return true;
             }
@@ -234,6 +234,21 @@ function handleTimelineRoute(array $segments): void
             $authUser['username'] ?? null
         );
 
+        $programmingQuestionnaire = ['sent' => 0, 'failed' => 0, 'recipients' => []];
+        if ($type === 'programming') {
+            $programmingQuestionnaire = sendProgrammingQuestionnaireNotification(
+                $project,
+                $assignTo,
+                $description,
+                $status,
+                $startDate,
+                $dueDate,
+                is_array($customFields) ? $customFields : [],
+                $id,
+                $authUser['username'] ?? null
+            );
+        }
+
         jsonResponse([
             'item' => [
                 'id' => $id,
@@ -248,6 +263,7 @@ function handleTimelineRoute(array $segments): void
                 'custom_fields' => $customFields,
             ],
             'notifications' => $notifications,
+            'programming_questionnaire' => $programmingQuestionnaire,
         ], 201);
     }
 
@@ -293,7 +309,10 @@ function handleTimelineRoute(array $segments): void
                 jsonResponse(['error' => 'Invalid status'], 400);
             }
 
-            if (timelineScheduleChanged($existing, $startDate, $dueDate, $customFields, $existingCustom)) {
+            if (
+                timelineScheduleChanged($existing, $startDate, $dueDate, $customFields, $existingCustom)
+                || timelineReminderSettingsChanged($existingCustom, $customFields)
+            ) {
                 resetTimelineReminderState($customFields);
             }
 

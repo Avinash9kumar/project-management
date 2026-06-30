@@ -6,6 +6,7 @@ import { getTimelineReport, updateTimelineItem, deleteTimelineItem } from '@/lib
 import {
   TimelineReportItem,
   TimelineItem,
+  TIMELINE_TYPES,
   TIMELINE_TAB_LABELS,
   TIMELINE_LABELS,
   STATUS_LABELS,
@@ -15,33 +16,41 @@ import {
 import { formatTimelineRange, formatTimeRemaining, remainingUrgencyClass } from '@/lib/timeline-utils';
 import AuthGuard from '@/components/AuthGuard';
 import ReportTimelineEditModal from '@/components/ReportTimelineEditModal';
+import ReportFilters, { ReportStatusFilter, TimelineTabFilter } from '@/components/ReportFilters';
 
-type ReportStatusFilter = 'all' | 'pending' | 'in_progress' | 'overdue' | 'completed';
-
-const REPORT_STATUS_FILTERS: { id: ReportStatusFilter; label: string }[] = [
-  { id: 'all', label: 'All' },
-  { id: 'pending', label: 'Pending' },
-  { id: 'in_progress', label: 'In Progress' },
-  { id: 'overdue', label: 'Overdue' },
-  { id: 'completed', label: 'Completed' },
-];
+function matchesTimelineTabFilter(item: TimelineReportItem, filter: TimelineTabFilter): boolean {
+  if (filter === 'all') return true;
+  return item.timeline_type === filter;
+}
 
 function isReportItemOverdue(item: TimelineReportItem): boolean {
   return (
     item.status !== 'completed' &&
+    item.status !== 'hold' &&
     item.remaining_seconds !== null &&
     item.remaining_seconds < 0
   );
 }
 
+function isReportItemActive(item: TimelineReportItem): boolean {
+  return item.status !== 'completed';
+}
+
+function isReportInProgressStatus(status: ProjectStatus): boolean {
+  return status === 'pending' || status === 'in_progress';
+}
+
+function reportStatusLabel(status: ProjectStatus): string {
+  if (status === 'pending') return STATUS_LABELS.in_progress;
+  return STATUS_LABELS[status];
+}
+
 function matchesReportStatusFilter(item: TimelineReportItem, filter: ReportStatusFilter): boolean {
   switch (filter) {
     case 'all':
-      return true;
-    case 'pending':
-      return item.status === 'pending';
+      return isReportItemActive(item);
     case 'in_progress':
-      return item.status === 'in_progress';
+      return isReportInProgressStatus(item.status);
     case 'completed':
       return item.status === 'completed';
     case 'overdue':
@@ -55,10 +64,13 @@ function statusBadgeClass(status: ProjectStatus) {
   switch (status) {
     case 'completed':
       return 'badge-completed';
+    case 'hold':
+      return 'badge-hold';
+    case 'pending':
     case 'in_progress':
       return 'badge-progress';
     default:
-      return 'badge-pending';
+      return 'badge-progress';
   }
 }
 
@@ -134,7 +146,7 @@ function ReportRow({
         {item.assign_to || '—'}
       </td>
       <td className="table-cell cursor-pointer" onClick={onOpen}>
-        <span className={statusBadgeClass(item.status)}>{STATUS_LABELS[item.status]}</span>
+        <span className={statusBadgeClass(item.status)}>{reportStatusLabel(item.status)}</span>
       </td>
       <td className="table-cell cursor-pointer text-xs text-slate-500" onClick={onOpen}>
         {formatTimelineRange({ ...item, sort_order: 0 } as TimelineItem)}
@@ -179,7 +191,7 @@ function ReportCard({
           </span>
         </div>
         <div className="flex items-center gap-2">
-          <span className={statusBadgeClass(item.status)}>{STATUS_LABELS[item.status]}</span>
+          <span className={statusBadgeClass(item.status)}>{reportStatusLabel(item.status)}</span>
           <ActionButtons onEdit={onEdit} onDelete={onDelete} />
         </div>
       </div>
@@ -204,7 +216,18 @@ export default function ReportPage() {
   const [error, setError] = useState('');
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState<ReportStatusFilter>('all');
+  const [timelineFilter, setTimelineFilter] = useState<TimelineTabFilter>('all');
   const [editingItem, setEditingItem] = useState<TimelineReportItem | null>(null);
+
+  const itemsForStatusCounts = useMemo(
+    () => items.filter((item) => matchesTimelineTabFilter(item, timelineFilter)),
+    [items, timelineFilter]
+  );
+
+  const itemsForTimelineCounts = useMemo(
+    () => items.filter((item) => matchesReportStatusFilter(item, statusFilter)),
+    [items, statusFilter]
+  );
 
   const loadReport = useCallback(async () => {
     try {
@@ -221,7 +244,11 @@ export default function ReportPage() {
   }, [loadReport]);
 
   const filtered = useMemo(() => {
-    let list = items.filter((i) => matchesReportStatusFilter(i, statusFilter));
+    let list = items.filter(
+      (i) =>
+        matchesReportStatusFilter(i, statusFilter) &&
+        matchesTimelineTabFilter(i, timelineFilter)
+    );
 
     const q = search.toLowerCase().trim();
     if (!q) return list;
@@ -231,9 +258,10 @@ export default function ReportPage() {
         i.project_title.toLowerCase().includes(q) ||
         i.project_code.toLowerCase().includes(q) ||
         i.assign_to.toLowerCase().includes(q) ||
-        (TIMELINE_LABELS[i.timeline_type as TimelineType] || '').toLowerCase().includes(q)
+        (TIMELINE_LABELS[i.timeline_type as TimelineType] || '').toLowerCase().includes(q) ||
+        (TIMELINE_TAB_LABELS[i.timeline_type as TimelineType] || '').toLowerCase().includes(q)
     );
-  }, [items, search, statusFilter]);
+  }, [items, search, statusFilter, timelineFilter]);
 
   const openProject = (projectId: number) => {
     router.push(`/project/?id=${projectId}`);
@@ -261,22 +289,46 @@ export default function ReportPage() {
 
   const filterCounts = useMemo(() => {
     const counts: Record<ReportStatusFilter, number> = {
-      all: items.length,
-      pending: 0,
+      all: 0,
       in_progress: 0,
       overdue: 0,
       completed: 0,
     };
 
-    for (const item of items) {
-      if (item.status === 'pending') counts.pending++;
-      if (item.status === 'in_progress') counts.in_progress++;
+    for (const item of itemsForStatusCounts) {
+      if (isReportItemActive(item)) counts.all++;
+      if (isReportInProgressStatus(item.status)) counts.in_progress++;
       if (item.status === 'completed') counts.completed++;
       if (isReportItemOverdue(item)) counts.overdue++;
     }
 
     return counts;
-  }, [items]);
+  }, [itemsForStatusCounts]);
+
+  const timelineFilterCounts = useMemo(() => {
+    const counts = Object.fromEntries(TIMELINE_TYPES.map((type) => [type, 0])) as Record<
+      TimelineType,
+      number
+    >;
+
+    for (const item of itemsForTimelineCounts) {
+      const type = item.timeline_type as TimelineType;
+      if (type in counts) {
+        counts[type]++;
+      }
+    }
+
+    return { all: itemsForTimelineCounts.length, ...counts } as Record<TimelineTabFilter, number>;
+  }, [itemsForTimelineCounts]);
+
+  const clearFilters = () => {
+    setSearch('');
+    setStatusFilter('all');
+    setTimelineFilter('all');
+  };
+
+  const hasActiveFilters =
+    statusFilter !== 'all' || timelineFilter !== 'all' || search.trim().length > 0;
 
   return (
     <AuthGuard>
@@ -285,58 +337,19 @@ export default function ReportPage() {
           <h1 className="page-title">Timeline Report</h1>
         </div>
 
-        <div className="card flex flex-wrap items-center gap-3 p-4">
-          <div className="relative min-w-[200px] flex-1">
-            <svg
-              className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400"
-              fill="none"
-              viewBox="0 0 24 24"
-              stroke="currentColor"
-              strokeWidth={2}
-            >
-              <path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
-            </svg>
-            <input
-              type="search"
-              className="search-input"
-              placeholder="Search project, assignee, tab..."
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-            />
-          </div>
-
-          <div className="flex max-w-full gap-1 overflow-x-auto rounded-xl bg-slate-100 p-1">
-            {REPORT_STATUS_FILTERS.map(({ id, label }) => (
-              <button
-                key={id}
-                type="button"
-                onClick={() => setStatusFilter(id)}
-                className={`flex shrink-0 items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-semibold transition ${
-                  statusFilter === id
-                    ? id === 'overdue'
-                      ? 'bg-white text-rose-700 shadow-sm ring-1 ring-rose-100'
-                      : 'bg-white text-indigo-700 shadow-sm'
-                    : id === 'overdue'
-                      ? 'text-rose-600 hover:text-rose-800'
-                      : 'text-slate-600 hover:text-slate-900'
-                }`}
-              >
-                {label}
-                <span
-                  className={`rounded-md px-1.5 py-0.5 text-[10px] font-bold ${
-                    statusFilter === id
-                      ? id === 'overdue'
-                        ? 'bg-rose-100 text-rose-700'
-                        : 'bg-indigo-100 text-indigo-700'
-                      : 'bg-slate-200/80 text-slate-600'
-                  }`}
-                >
-                  {filterCounts[id]}
-                </span>
-              </button>
-            ))}
-          </div>
-        </div>
+        <ReportFilters
+          search={search}
+          onSearchChange={setSearch}
+          statusFilter={statusFilter}
+          onStatusFilterChange={setStatusFilter}
+          timelineFilter={timelineFilter}
+          onTimelineFilterChange={setTimelineFilter}
+          statusCounts={filterCounts}
+          timelineCounts={timelineFilterCounts}
+          totalItems={items.length}
+          filteredCount={filtered.length}
+          onClearFilters={clearFilters}
+        />
 
         {error && <div className="alert-error">{error}</div>}
 
@@ -346,7 +359,22 @@ export default function ReportPage() {
           </div>
         ) : filtered.length === 0 ? (
           <div className="empty-state">
-            <p className="text-sm text-slate-600">No timeline items match your filters.</p>
+            <div className="mb-3 flex h-12 w-12 items-center justify-center rounded-2xl bg-slate-100 text-slate-400">
+              <svg className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.75}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+              </svg>
+            </div>
+            <p className="text-sm font-medium text-slate-700">No tasks match your filters</p>
+            <p className="mt-1 max-w-sm text-sm text-slate-500">
+              {hasActiveFilters
+                ? 'Try clearing filters or choosing a different timeline tab or status.'
+                : 'There are no timeline items in the report yet.'}
+            </p>
+            {hasActiveFilters && (
+              <button type="button" onClick={clearFilters} className="btn-secondary mt-4 text-sm">
+                Clear all filters
+              </button>
+            )}
           </div>
         ) : (
           <>

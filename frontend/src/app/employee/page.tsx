@@ -19,7 +19,7 @@ import {
   joinAssignTo,
   isMainAssigneeForEmployee,
 } from '@/lib/timeline-utils';
-import { SELF_ASSIGNEE, DEFAULT_ASSIGNEE_EMAILS } from '@/lib/assignees';
+import { DEFAULT_ASSIGNEE_EMAILS } from '@/lib/assignees';
 import { useAssignees } from '@/context/AssigneeContext';
 import AuthGuard from '@/components/AuthGuard';
 import ReportTimelineEditModal from '@/components/ReportTimelineEditModal';
@@ -37,6 +37,7 @@ const REPORT_STATUS_FILTERS: { id: ReportStatusFilter; label: string }[] = [
 function isReportItemOverdue(item: TimelineReportItem): boolean {
   return (
     item.status !== 'completed' &&
+    item.status !== 'hold' &&
     item.remaining_seconds !== null &&
     item.remaining_seconds < 0
   );
@@ -60,7 +61,6 @@ function matchesReportStatusFilter(item: TimelineReportItem, filter: ReportStatu
 }
 
 function displayLabel(value: string): string {
-  if (value === SELF_ASSIGNEE) return SELF_ASSIGNEE;
   if (!value.includes('@')) return value;
   return value.split('@')[0];
 }
@@ -69,6 +69,8 @@ function statusBadgeClass(status: ProjectStatus) {
   switch (status) {
     case 'completed':
       return 'badge-completed';
+    case 'hold':
+      return 'badge-hold';
     case 'in_progress':
       return 'badge-progress';
     default:
@@ -236,7 +238,7 @@ export default function EmployeeReportPage() {
 
   const employeeOptions = useMemo(() => {
     const pool = assigneeValues.length > 0 ? assigneeValues : [...DEFAULT_ASSIGNEE_EMAILS];
-    return [SELF_ASSIGNEE, ...pool];
+    return pool;
   }, [assigneeValues]);
 
   const loadReport = useCallback(async () => {

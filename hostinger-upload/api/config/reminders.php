@@ -2,6 +2,9 @@
 
 declare(strict_types=1);
 
+/** Repeat overdue assignee email every hour until completed or hold. */
+const OVERDUE_EMAIL_INTERVAL_SECONDS = 3600;
+
 function decodeItemCustomFields(array $item): array
 {
     $custom = $item['custom_fields'] ?? [];
@@ -32,6 +35,132 @@ function getReminderThresholds(): array
     sort($normalized);
 
     return $normalized !== [] ? $normalized : [75];
+}
+
+function getMandatoryReminderPercents(): array
+{
+    return [75];
+}
+
+function getOptionalReminderPercentOptions(): array
+{
+    return [50, 70, 80, 90, 95];
+}
+
+function getDateEndSlotFromCustom(array $custom): ?string
+{
+    $slot = strtoupper((string) ($custom['date_end_slot'] ?? ''));
+    if (in_array($slot, ['SOD', 'MID', 'EOD'], true)) {
+        return $slot;
+    }
+
+    return null;
+}
+
+/** @return array{endDate: string, endTime: string} */
+function resolveDateModeEnd(string $dueDate, ?string $slot): array
+{
+    switch ($slot) {
+        case 'SOD':
+            return ['endDate' => $dueDate, 'endTime' => '18:00'];
+        case 'MID':
+            return ['endDate' => $dueDate, 'endTime' => '21:30'];
+        case 'EOD':
+            $nextDay = date('Y-m-d', strtotime($dueDate . ' +1 day'));
+
+            return ['endDate' => $nextDay, 'endTime' => '03:00'];
+        default:
+            return ['endDate' => $dueDate, 'endTime' => '23:59'];
+    }
+}
+
+function formatDateEndSlotLabel(?string $slot): string
+{
+    return match ($slot) {
+        'SOD' => 'SOD (6 PM)',
+        'MID' => 'MID (9:30 PM)',
+        'EOD' => 'EOD (next day 3 AM)',
+        default => 'End of day',
+    };
+}
+
+function normalizeOptionalReminderList(array $values): array
+{
+    $options = getOptionalReminderPercentOptions();
+    $normalized = [];
+    foreach ($values as $value) {
+        $intValue = (int) $value;
+        if (in_array($intValue, $options, true) && !in_array($intValue, getMandatoryReminderPercents(), true)) {
+            $normalized[] = $intValue;
+        }
+    }
+    $normalized = array_values(array_unique($normalized));
+    sort($normalized);
+
+    return $normalized;
+}
+
+function normalizeItemOptionalReminderPercents(array $custom): array
+{
+    if (isset($custom['reminder_percents']) && is_array($custom['reminder_percents'])) {
+        return normalizeOptionalReminderList($custom['reminder_percents']);
+    }
+
+    $percent = (int) ($custom['reminder_percent'] ?? 0);
+    if ($percent > 0 && $percent < 100) {
+        if (in_array($percent, getMandatoryReminderPercents(), true)) {
+            return [];
+        }
+
+        return normalizeOptionalReminderList([$percent]);
+    }
+
+    return [];
+}
+
+function mergeEffectiveReminderPercents(array $optionalPercents): array
+{
+    $merged = array_merge(getMandatoryReminderPercents(), normalizeOptionalReminderList($optionalPercents));
+    $merged = array_values(array_unique($merged));
+    sort($merged);
+
+    return $merged;
+}
+
+/** @return int[] */
+function getItemReminderThresholds(array $item): array
+{
+    $custom = decodeItemCustomFields($item);
+
+    return mergeEffectiveReminderPercents(normalizeItemOptionalReminderPercents($custom));
+}
+
+/** @return array<int, array{percent: int, at: string|null}> */
+function getReminderTriggerTimestamps(array $item): array
+{
+    $window = getTimelineItemTimeWindow($item);
+    if ($window === null) {
+        return [];
+    }
+
+    $duration = $window['end'] - $window['start'];
+    $triggers = [];
+
+    foreach (getItemReminderThresholds($item) as $percent) {
+        $ts = $window['start'] + (int) round($duration * ($percent / 100));
+        $triggers[] = [
+            'percent' => $percent,
+            'at' => gmdate('c', $ts),
+        ];
+    }
+
+    return $triggers;
+}
+
+function timelineReminderSettingsChanged(array $existingCustom, array $customFields): bool
+{
+    return json_encode(normalizeItemOptionalReminderPercents($existingCustom))
+        !== json_encode(normalizeItemOptionalReminderPercents($customFields));
 }
 
 function parseDateTimeOnTimeline(string $date, string $time): ?int
@@ -70,8 +199,10 @@ function getTimelineItemTimeWindow(array $item): ?array
             (string) ($custom['end_time'] ?? $custom['start_time'] ?? '23:59')
         );
     } else {
+        $slot = getDateEndSlotFromCustom($custom);
+        $resolved = resolveDateModeEnd($dueDate, $slot);
         $startTs = strtotime($startDate . ' 00:00:00') ?: null;
-        $endTs = strtotime($dueDate . ' 23:59:59') ?: null;
+        $endTs = parseDateTimeOnTimeline($resolved['endDate'], $resolved['endTime']);
     }
 
     if ($startTs === null || $endTs === null || $endTs <= $startTs) {
@@ -119,9 +250,106 @@ function isTimelineItemCompleted(array $item): bool
     return ($item['status'] ?? '') === 'completed';
 }
 
+function isTimelineItemOnHold(array $item): bool
+{
+    return ($item['status'] ?? '') === 'hold';
+}
+
+function isTimelineItemInactiveForReminders(array $item): bool
+{
+    $status = (string) ($item['status'] ?? '');
+
+    return $status === 'completed' || $status === 'hold';
+}
+
 function isTimelinePassedNotified(array $custom): bool
 {
-    return !empty($custom['timeline_passed_notified']);
+    return getOverdueLastSentAt($custom) !== null || !empty($custom['timeline_passed_notified']);
+}
+
+function getOverdueLastSentAt(array $custom): ?int
+{
+    if (isset($custom['overdue_last_sent_at'])) {
+        $value = $custom['overdue_last_sent_at'];
+        if (is_numeric($value)) {
+            $ts = (int) $value;
+
+            return $ts > 0 ? $ts : null;
+        }
+
+        $parsed = strtotime((string) $value);
+
+        return $parsed !== false ? $parsed : null;
+    }
+
+    return null;
+}
+
+function resolveOverdueLastSentAt(array $item, array $custom, int $now): ?int
+{
+    $lastSent = getOverdueLastSentAt($custom);
+    if ($lastSent !== null) {
+        return $lastSent;
+    }
+
+    if (!empty($custom['timeline_passed_notified'])) {
+        $window = getTimelineItemTimeWindow($item);
+
+        return $window !== null ? $window['end'] : $now;
+    }
+
+    return null;
+}
+
+function getOverdueEmailIntervalSeconds(): int
+{
+    return OVERDUE_EMAIL_INTERVAL_SECONDS;
+}
+
+function isOverdueEmailDue(array $item, ?int $now = null): bool
+{
+    if (isTimelineItemInactiveForReminders($item)) {
+        return false;
+    }
+
+    $progress = getTimelineProgressPercent($item, $now);
+    if ($progress === null || $progress < 100) {
+        return false;
+    }
+
+    $now = $now ?? time();
+    $custom = decodeItemCustomFields($item);
+    $lastSent = resolveOverdueLastSentAt($item, $custom, $now);
+
+    if ($lastSent === null) {
+        return true;
+    }
+
+    return ($now - $lastSent) >= getOverdueEmailIntervalSeconds();
+}
+
+function getOverdueNextSendAt(array $item, ?int $now = null): ?int
+{
+    if (isTimelineItemInactiveForReminders($item)) {
+        return null;
+    }
+
+    $progress = getTimelineProgressPercent($item, $now);
+    if ($progress === null || $progress < 100) {
+        return null;
+    }
+
+    $now = $now ?? time();
+    $custom = decodeItemCustomFields($item);
+    $lastSent = resolveOverdueLastSentAt($item, $custom, $now);
+
+    if ($lastSent === null) {
+        return $now;
+    }
+
+    $next = $lastSent + getOverdueEmailIntervalSeconds();
+
+    return $next > $now ? $next : $now;
 }
 
 function fetchTimelineItemStatus(PDO $db, int $itemId): ?string
@@ -135,7 +363,7 @@ function fetchTimelineItemStatus(PDO $db, int $itemId): ?string
 
 function getPendingReminderThresholds(array $item, ?int $now = null): array
 {
-    if (isTimelineItemCompleted($item)) {
+    if (isTimelineItemInactiveForReminders($item)) {
         return [];
     }
 
@@ -151,7 +379,7 @@ function getPendingReminderThresholds(array $item, ?int $now = null): array
     }
 
     $pending = [];
-    foreach (getReminderThresholds() as $threshold) {
+    foreach (getItemReminderThresholds($item) as $threshold) {
         if ($progress >= $threshold && !in_array($threshold, $sent, true)) {
             $pending[] = $threshold;
         }
@@ -160,20 +388,18 @@ function getPendingReminderThresholds(array $item, ?int $now = null): array
     return $pending;
 }
 
-/** Friendly subject suffix for the 75% progress reminder. */
 function reminderSubjectSuffix(int $threshold): string
 {
-    return match ($threshold) {
-        75 => 'Reminder — 75% check-in',
-        default => 'Reminder — progress check',
-    };
+    return 'Reminder — ' . $threshold . '% check-in';
 }
 
-/** Friendly intro for the 75% progress reminder (create email + 100% overdue are separate). */
+/** Friendly intro for the progress reminder (create email + 100% overdue are separate). */
 function reminderContentForThreshold(int $threshold): array
 {
     return [
-        'This is a friendly check-in on your timeline task — you are three-quarters through the scheduled window.',
+        'This is a friendly check-in on your timeline task — you are '
+            . $threshold
+            . '% through the scheduled window.',
         ['NOTE', '  Please review your progress and update the status if needed.'],
     ];
 }
@@ -184,7 +410,7 @@ function sendTimelineReminderEmails(
     string $assignTo,
     int $threshold
 ): array {
-    if (isTimelineItemCompleted($item)) {
+    if (isTimelineItemInactiveForReminders($item)) {
         return ['sent' => 0, 'failed' => 0, 'skipped' => 1, 'recipients' => []];
     }
 
@@ -219,7 +445,7 @@ function sendTimelineOverdueAssigneeEmail(
     array $item,
     string $assignTo
 ): array {
-    if (isTimelineItemCompleted($item)) {
+    if (isTimelineItemInactiveForReminders($item)) {
         return ['sent' => 0, 'failed' => 0, 'skipped' => 1, 'recipients' => []];
     }
 
@@ -273,8 +499,10 @@ function markRemindersSent(PDO $db, int $itemId, array $customFields, array $new
     $stmt->execute([json_encode($customFields), $itemId]);
 }
 
-function markTimelinePassedNotified(PDO $db, int $itemId, array $customFields): void
+function markTimelinePassedNotified(PDO $db, int $itemId, array $customFields, ?int $sentAt = null): void
 {
+    $sentAt = $sentAt ?? time();
+    $customFields['overdue_last_sent_at'] = $sentAt;
     $customFields['timeline_passed_notified'] = true;
 
     $sent = $customFields['email_reminders_sent'] ?? [];
@@ -282,7 +510,7 @@ function markTimelinePassedNotified(PDO $db, int $itemId, array $customFields): 
         $sent = [];
     }
 
-    foreach (getReminderThresholds() as $threshold) {
+    foreach (mergeEffectiveReminderPercents(normalizeItemOptionalReminderPercents($customFields)) as $threshold) {
         if (!in_array($threshold, $sent, true)) {
             $sent[] = $threshold;
         }
@@ -297,7 +525,11 @@ function markTimelinePassedNotified(PDO $db, int $itemId, array $customFields): 
 
 function resetTimelineReminderState(array &$customFields): void
 {
-    unset($customFields['email_reminders_sent'], $customFields['timeline_passed_notified']);
+    unset(
+        $customFields['email_reminders_sent'],
+        $customFields['timeline_passed_notified'],
+        $customFields['overdue_last_sent_at']
+    );
 }
 
 function processTimelineReminders(PDO $db): array
@@ -306,7 +538,7 @@ function processTimelineReminders(PDO $db): array
         'SELECT ti.*, p.project_id AS project_code, p.title AS project_title
          FROM timeline_items ti
          INNER JOIN projects p ON p.id = ti.project_id
-         WHERE ti.status != \'completed\'
+         WHERE ti.status NOT IN (\'completed\', \'hold\')
          AND ti.start_date IS NOT NULL'
     );
     $rows = $stmt->fetchAll();
@@ -318,6 +550,7 @@ function processTimelineReminders(PDO $db): array
         'admin_notified' => 0,
         'failed' => 0,
         'skipped_completed' => 0,
+        'skipped_hold' => 0,
         'items' => [],
     ];
 
@@ -328,6 +561,10 @@ function processTimelineReminders(PDO $db): array
         $currentStatus = fetchTimelineItemStatus($db, $itemId);
         if ($currentStatus === null || $currentStatus === 'completed') {
             $summary['skipped_completed']++;
+            continue;
+        }
+        if ($currentStatus === 'hold') {
+            $summary['skipped_hold']++;
             continue;
         }
 
@@ -347,23 +584,17 @@ function processTimelineReminders(PDO $db): array
         ];
 
         $progress = getTimelineProgressPercent($row);
+        $now = time();
 
-        // Timeline passed (100%) — one gentle assignee email + admin alert (once)
-        if ($progress !== null && $progress >= 100 && !isTimelinePassedNotified($custom)) {
+        // Overdue — first email when schedule ends, then every hour until completed/hold
+        if ($progress !== null && $progress >= 100 && isOverdueEmailDue($row, $now)) {
             $assigneeResult = sendTimelineOverdueAssigneeEmail($project, $row, $assignTo);
-            $adminSent = sendTimelinePassedAdminNotification($project, $row);
 
             $summary['failed'] += $assigneeResult['failed'];
 
             if ($assigneeResult['sent'] > 0) {
                 $summary['reminders_sent'] += $assigneeResult['sent'];
-            }
-            if ($adminSent) {
-                $summary['admin_notified']++;
-            }
-
-            if ($assigneeResult['sent'] > 0 || $adminSent) {
-                markTimelinePassedNotified($db, $itemId, $custom);
+                markTimelinePassedNotified($db, $itemId, $custom, $now);
                 $summary['overdue_notified']++;
                 $summary['items'][] = [
                     'id' => $itemId,
@@ -391,6 +622,10 @@ function processTimelineReminders(PDO $db): array
             $summary['skipped_completed']++;
             continue;
         }
+        if ($latestStatus === 'hold') {
+            $summary['skipped_hold']++;
+            continue;
+        }
 
         $row['status'] = $latestStatus;
         $result = sendTimelineReminderEmails($project, $row, $assignTo, $threshold);
@@ -416,7 +651,7 @@ function getReminderDiagnostics(PDO $db): array
         'SELECT ti.*, p.project_id AS project_code, p.title AS project_title
          FROM timeline_items ti
          INNER JOIN projects p ON p.id = ti.project_id
-         WHERE ti.status != \'completed\'
+         WHERE ti.status NOT IN (\'completed\', \'hold\')
          AND ti.start_date IS NOT NULL'
     );
     $rows = $stmt->fetchAll();
@@ -434,7 +669,9 @@ function getReminderDiagnostics(PDO $db): array
         }
 
         $passedNotified = isTimelinePassedNotified($custom);
-        $overduePending = $progress !== null && $progress >= 100 && !$passedNotified;
+        $overdueLastSent = resolveOverdueLastSentAt($row, $custom, $now);
+        $overduePending = isOverdueEmailDue($row, $now);
+        $overdueNextAt = getOverdueNextSendAt($row, $now);
 
         $reason = 'ready';
         if ($progress === null) {
@@ -442,9 +679,12 @@ function getReminderDiagnostics(PDO $db): array
         } elseif ($overduePending) {
             $reason = 'overdue_ready';
         } elseif ($pending === []) {
-            if ($progress >= 100 && $passedNotified) {
-                $reason = 'overdue_already_notified';
-            } elseif ($progress < min(getReminderThresholds())) {
+            $thresholds = getItemReminderThresholds($row);
+            if ($progress >= 100 && !$overduePending) {
+                $reason = 'overdue_interval_waiting';
+            } elseif ($thresholds === []) {
+                $reason = 'no_reminders_configured';
+            } elseif ($progress < min($thresholds)) {
                 $reason = 'below_first_threshold';
             } else {
                 $reason = 'already_sent_or_completed';
@@ -452,6 +692,8 @@ function getReminderDiagnostics(PDO $db): array
         }
 
         $assignTo = trim((string) ($custom['assign_to'] ?? $row['title'] ?? ''));
+
+        $triggerTs = getReminderTriggerTimestamps($row);
 
         $diagnostics[] = [
             'id' => (int) $row['id'],
@@ -465,11 +707,19 @@ function getReminderDiagnostics(PDO $db): array
             'timeline_mode' => $custom['timeline_mode'] ?? 'date',
             'start_time' => $custom['start_time'] ?? null,
             'end_time' => $custom['end_time'] ?? null,
+            'reminder_percents_optional' => normalizeItemOptionalReminderPercents($custom),
+            'reminder_percents_mandatory' => getMandatoryReminderPercents(),
+            'reminder_percents' => getItemReminderThresholds($row),
+            'reminder_overdue_percent' => 100,
+            'reminder_triggers' => $triggerTs,
             'progress_percent' => $progress !== null ? round($progress, 1) : null,
             'window_start' => $window ? gmdate('c', $window['start']) : null,
             'window_end' => $window ? gmdate('c', $window['end']) : null,
             'reminders_already_sent' => $sent,
             'timeline_passed_notified' => $passedNotified,
+            'overdue_last_sent_at' => $overdueLastSent !== null ? gmdate('c', $overdueLastSent) : null,
+            'overdue_next_at' => $overdueNextAt !== null ? gmdate('c', $overdueNextAt) : null,
+            'overdue_interval_hours' => getOverdueEmailIntervalSeconds() / 3600,
             'pending_thresholds' => $pending,
             'overdue_pending' => $overduePending,
             'next_action' => $overduePending

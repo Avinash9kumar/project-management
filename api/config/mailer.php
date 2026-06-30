@@ -21,9 +21,20 @@ function getMailConfig(): array
     return array_merge($defaults, is_array($mail) ? $mail : []);
 }
 
-function resolveAssigneeRecipients(string $assignTo, ?string $creatorUsername): array
+function getAdminEmail(): string
 {
     $mailConfig = getMailConfig();
+    $configured = trim((string) ($mailConfig['status_notify_email'] ?? $mailConfig['self_email'] ?? ''));
+
+    if ($configured !== '' && filter_var($configured, FILTER_VALIDATE_EMAIL)) {
+        return strtolower($configured);
+    }
+
+    return 'avinash@ae-research.com';
+}
+
+function resolveAssigneeRecipients(string $assignTo, ?string $creatorUsername): array
+{
     $recipients = [];
 
     foreach (explode(',', $assignTo) as $part) {
@@ -33,10 +44,7 @@ function resolveAssigneeRecipients(string $assignTo, ?string $creatorUsername): 
         }
 
         if (strcasecmp($part, 'Self') === 0) {
-            $selfEmail = (string) ($mailConfig['self_email'] ?? 'avinash@ae-research.com');
-            if (filter_var($selfEmail, FILTER_VALIDATE_EMAIL)) {
-                $recipients[] = strtolower($selfEmail);
-            }
+            $recipients[] = getAdminEmail();
             continue;
         }
 
@@ -149,6 +157,29 @@ function getAllAssignmentRecipientEmails(array $customFields, string $assignToFa
     return array_values(array_unique(array_merge([$assignment['to']], $assignment['cc'])));
 }
 
+/** @param string[] $ccRecipients */
+function appendAdminCc(array $ccRecipients, ?string $primaryTo): array
+{
+    $admin = getAdminEmail();
+    if ($primaryTo !== null && strtolower($primaryTo) === $admin) {
+        return $ccRecipients;
+    }
+
+    $cc = [];
+    foreach ($ccRecipients as $email) {
+        $normalized = strtolower(trim((string) $email));
+        if ($normalized !== '' && filter_var($normalized, FILTER_VALIDATE_EMAIL)) {
+            $cc[] = $normalized;
+        }
+    }
+
+    if (!in_array($admin, $cc, true)) {
+        $cc[] = $admin;
+    }
+
+    return array_values(array_unique($cc));
+}
+
 function formatAssignToDisplay(array $customFields, string $fallback = ''): string
 {
     $main = trim((string) ($customFields['assign_main'] ?? ''));
@@ -173,7 +204,7 @@ function buildEmailSubject(array $project, string $timelineType, string $suffix 
     $title = trim((string) ($project['title'] ?? 'Project'));
     $projectId = trim((string) ($project['project_id'] ?? ''));
     $tab = getTimelineTabHeading($timelineType);
-    $subject = $title . ' - ' . $projectId . ' - ' . $tab;
+    $subject = $tab . ' - ' . $title . ' - ' . $projectId;
 
     if ($suffix !== '') {
         $subject .= ' - ' . $suffix;
@@ -186,6 +217,7 @@ function formatStatusLabel(string $status): string
 {
     return match ($status) {
         'in_progress' => 'In Progress',
+        'hold' => 'Hold',
         'completed' => 'Completed',
         default => 'Pending',
     };
@@ -245,11 +277,11 @@ function formatTimelineDetailsForEmail(
         'mode_label' => 'Date range',
         'start_date' => formatDateForEmail($startDate),
         'end_date' => formatDateForEmail($dueDate),
+        'end_slot' => formatDateEndSlotLabel(getDateEndSlotFromCustom($customFields)),
         'date' => null,
         'start_time' => null,
         'end_time' => null,
         'duration' => null,
-        'end_date' => null,
     ];
 }
 
@@ -269,6 +301,7 @@ function formatTimelineScheduleLines(?string $startDate, ?string $dueDate, array
     } else {
         $lines[] = '  Start date: ' . $details['start_date'];
         $lines[] = '  End date: ' . $details['end_date'];
+        $lines[] = '  End time: ' . ($details['end_slot'] ?? 'End of day');
     }
 
     return $lines;
@@ -361,25 +394,31 @@ function sendMailToAssignmentGroup(
     string $subject,
     string $body
 ): array {
-    $allRecipients = array_values(array_unique(array_merge([strtolower($primaryTo)], array_map('strtolower', $ccRecipients))));
     $result = ['sent' => 0, 'failed' => 0, 'recipients' => []];
 
-    if ($allRecipients === []) {
+    $to = strtolower(trim($primaryTo));
+    if (!filter_var($to, FILTER_VALIDATE_EMAIL)) {
         return $result;
     }
 
-    foreach ($allRecipients as $recipient) {
-        $others = array_values(array_filter(
-            $allRecipients,
-            static fn (string $email): bool => $email !== $recipient
-        ));
-
-        if (sendMailMessage($recipient, $subject, $body, $others)) {
-            $result['sent']++;
-            $result['recipients'][] = $recipient;
-        } else {
-            $result['failed']++;
+    $cc = [];
+    foreach ($ccRecipients as $email) {
+        $normalized = strtolower(trim((string) $email));
+        if (
+            $normalized !== '' &&
+            filter_var($normalized, FILTER_VALIDATE_EMAIL) &&
+            $normalized !== $to &&
+            !in_array($normalized, $cc, true)
+        ) {
+            $cc[] = $normalized;
         }
+    }
+
+    if (sendMailMessage($to, $subject, $body, $cc)) {
+        $result['sent'] = 1;
+        $result['recipients'] = array_merge([$to], $cc);
+    } else {
+        $result['failed'] = 1;
     }
 
     return $result;
@@ -406,6 +445,13 @@ function sendTimelineEmailWithAssignment(
     if (!($mailConfig['enabled'] ?? true)) {
         $assignment = resolveAssignmentRecipients($customFields, $assignToFallback, $creatorUsername);
         $result['skipped'] = ($assignment['to'] !== null ? 1 : 0) + count($assignment['cc']);
+        if ($assignment['to'] !== null) {
+            $admin = getAdminEmail();
+            if (strtolower($assignment['to']) !== $admin && !in_array($admin, $assignment['cc'], true)) {
+                $result['skipped']++;
+            }
+        }
+
         return $result;
     }
 
@@ -413,6 +459,8 @@ function sendTimelineEmailWithAssignment(
     if ($assignment['to'] === null) {
         return $result;
     }
+
+    $cc = appendAdminCc($assignment['cc'], $assignment['to']);
 
     $subject = buildEmailSubject($project, $timelineType, $subjectSuffix ?? '');
     $body = buildTimelineEmailBody(
@@ -429,10 +477,92 @@ function sendTimelineEmailWithAssignment(
         $extraLines
     );
 
-    $delivery = sendMailToAssignmentGroup($assignment['to'], $assignment['cc'], $subject, $body);
+    $delivery = sendMailToAssignmentGroup($assignment['to'], $cc, $subject, $body);
     $result['sent'] = $delivery['sent'];
     $result['failed'] = $delivery['failed'];
     $result['recipients'] = $delivery['recipients'];
+
+    return $result;
+}
+
+/** Programming tab: notify survey team to share questionnaire with Bangalore. */
+function sendProgrammingQuestionnaireNotification(
+    array $project,
+    string $assignTo,
+    string $description,
+    string $status,
+    ?string $startDate,
+    ?string $dueDate,
+    array $customFields,
+    int $itemId,
+    ?string $createdByUsername = null
+): array {
+    $mailConfig = getMailConfig();
+    $result = ['sent' => 0, 'failed' => 0, 'recipients' => []];
+
+    if (!($mailConfig['enabled'] ?? true)) {
+        $result['skipped'] = 1;
+
+        return $result;
+    }
+
+    $to = 'qazimudassir@outlook.com';
+    $cc = ['insighta1@outlook.com', 'projects@ae-research.com'];
+    $tabHeading = getTimelineTabHeading('programming');
+
+    $subject = buildEmailSubject($project, 'programming', 'New Survey — Questionnaire Required');
+
+    $lines = [
+        'Hello,',
+        '',
+        'A new Programming timeline ticket (survey) has been created in Project Timeline Tracker.',
+        '',
+        'ACTION REQUIRED',
+        '  A new survey has been registered. Please ask the AER team to share the',
+        '  questionnaire for this survey with the Bangalore team.',
+        '',
+        'PROJECT',
+        '  Title: ' . ($project['title'] ?? 'Untitled'),
+        '  Project ID: ' . ($project['project_id'] ?? '—'),
+        '',
+        'TIMELINE',
+        '  Tab: ' . $tabHeading,
+        '  Ticket ID: ' . $itemId,
+        '',
+        'ASSIGNED TO',
+        '  ' . ($assignTo !== '' ? $assignTo : '—'),
+        '',
+        'STATUS',
+        '  ' . formatStatusLabel($status),
+        '',
+        'SCHEDULE',
+        ...formatTimelineScheduleLines($startDate, $dueDate, $customFields),
+    ];
+
+    $lines[] = '';
+    $lines[] = 'DESCRIPTION';
+    $lines[] = '  ' . (trim($description) !== '' ? trim($description) : 'None');
+
+    if ($createdByUsername !== null && trim($createdByUsername) !== '') {
+        $lines[] = '';
+        $lines[] = 'CREATED BY';
+        $lines[] = '  ' . trim($createdByUsername);
+    }
+
+    $lines[] = '';
+    $lines[] = 'Please coordinate with the AER team so the Bangalore team receives the questionnaire promptly.';
+    $lines[] = '';
+    $lines[] = '—';
+    $lines[] = 'Project Timeline Tracker';
+
+    $body = implode("\n", $lines);
+
+    if (sendMailMessage($to, $subject, $body, $cc)) {
+        $result['sent'] = 1;
+        $result['recipients'] = array_merge([$to], $cc);
+    } else {
+        $result['failed'] = 1;
+    }
 
     return $result;
 }
@@ -535,83 +665,7 @@ function buildTimelineAdminAlertEmailBody(
 
 function sendTimelinePassedAdminNotification(array $project, array $item): bool
 {
-    $mailConfig = getMailConfig();
-
-    if (!($mailConfig['enabled'] ?? true)) {
-        return false;
-    }
-
-    $notifyEmail = (string) ($mailConfig['status_notify_email'] ?? $mailConfig['self_email'] ?? '');
-    if (!filter_var($notifyEmail, FILTER_VALIDATE_EMAIL)) {
-        return false;
-    }
-
-    $timelineType = (string) ($item['timeline_type'] ?? '');
-    $subject = buildEmailSubject($project, $timelineType, 'Timeline Passed — Not Completed');
-    $body = buildTimelineAdminAlertEmailBody(
-        $project,
-        $item,
-        'A timeline task has passed its scheduled end time and is still not marked as completed.'
-    );
-
-    $custom = decodeMailCustomFields($item);
-    $assignTo = getAssignToFromItem($item);
-    $ccRecipients = getAllAssignmentRecipientEmails($custom, $assignTo, null);
-    $ccRecipients = array_values(array_filter(
-        $ccRecipients,
-        static fn (string $email): bool => strtolower($email) !== strtolower($notifyEmail)
-    ));
-
-    return sendMailMessage($notifyEmail, $subject, $body, $ccRecipients);
-}
-
-function buildTimelineStatusUpdateEmailBody(
-    array $project,
-    array $item,
-    string $previousStatus,
-    string $newStatus
-): string {
-    $timelineType = (string) ($item['timeline_type'] ?? '');
-    $tabHeading = getTimelineTabHeading($timelineType);
-    $custom = decodeMailCustomFields($item);
-    $assignTo = getAssignToFromItem($item);
-    $description = trim((string) ($item['description'] ?? ''));
-    $notifyEmail = (string) (getMailConfig()['status_notify_email'] ?? 'avinash@ae-research.com');
-
-    $lines = [
-        'Hello,',
-        $notifyEmail,
-        '',
-        'A timeline task status was updated via the email completion link.',
-        '',
-        'PROJECT',
-        '  Title: ' . ($project['title'] ?? 'Untitled'),
-        '  Project ID: ' . ($project['project_id'] ?? '—'),
-        '',
-        'TIMELINE TAB',
-        '  ' . $tabHeading,
-        '',
-        'ASSIGNED TO',
-        '  ' . $assignTo,
-        '',
-        'STATUS CHANGE',
-        '  ' . formatStatusLabel($previousStatus) . ' → ' . formatStatusLabel($newStatus),
-        '',
-        'SCHEDULE',
-        ...formatTimelineScheduleLines(
-            $item['start_date'] ?? null,
-            $item['due_date'] ?? null,
-            $custom
-        ),
-        '',
-        'DESCRIPTION',
-        '  ' . ($description !== '' ? $description : 'None'),
-        '',
-        '—',
-        'Project Timeline Tracker',
-    ];
-
-    return implode("\n", $lines);
+    return false;
 }
 
 function sendTimelineStatusChangeNotification(
@@ -626,24 +680,23 @@ function sendTimelineStatusChangeNotification(
         return false;
     }
 
-    $notifyEmail = (string) ($mailConfig['status_notify_email'] ?? $mailConfig['self_email'] ?? '');
-    if (!filter_var($notifyEmail, FILTER_VALIDATE_EMAIL)) {
-        return false;
-    }
-
+    $admin = getAdminEmail();
     $timelineType = (string) ($item['timeline_type'] ?? '');
-    $subject = buildEmailSubject($project, $timelineType, 'Status Updated to ' . formatStatusLabel($newStatus));
-    $body = buildTimelineStatusUpdateEmailBody($project, $item, $previousStatus, $newStatus);
+    $subject = buildEmailSubject(
+        $project,
+        $timelineType,
+        'Status Updated to ' . formatStatusLabel($newStatus) . ' (email link)'
+    );
 
-    $custom = decodeMailCustomFields($item);
-    $assignTo = getAssignToFromItem($item);
-    $ccRecipients = getAllAssignmentRecipientEmails($custom, $assignTo, null);
-    $ccRecipients = array_values(array_filter(
-        $ccRecipients,
-        static fn (string $email): bool => strtolower($email) !== strtolower($notifyEmail)
-    ));
+    $alertMessage = 'A timeline task was marked as completed using the email completion link. Status changed from '
+        . formatStatusLabel($previousStatus)
+        . ' to '
+        . formatStatusLabel($newStatus)
+        . '.';
 
-    return sendMailMessage($notifyEmail, $subject, $body, $ccRecipients);
+    $body = buildTimelineAdminAlertEmailBody($project, $item, $alertMessage);
+
+    return sendMailMessage($admin, $subject, $body);
 }
 
 function appendCompletionCommentToDescription(?string $existingDescription, string $comment): ?string
@@ -869,6 +922,10 @@ function handleTimelineCompleteRoute(): void
 
     if (($item['status'] ?? '') === 'completed') {
         renderCompletePage(true, 'This task is already marked as completed.', $item);
+    }
+
+    if (($item['status'] ?? '') === 'hold') {
+        renderCompletePage(false, 'This task is on hold. Reminders and completion are paused until the status is changed.', $item);
     }
 
     if ($method === 'GET') {

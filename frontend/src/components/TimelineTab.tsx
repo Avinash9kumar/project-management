@@ -1,12 +1,16 @@
 'use client';
 
 import { useState } from 'react';
-import { TimelineItem, STATUS_LABELS } from '@/lib/types';
+import { TimelineItem, STATUS_LABELS, CustomFieldValue, statusOptionsForSelect } from '@/lib/types';
 import {
   getAssignMain,
   getAssignCcList,
   joinAssignTo,
   formatTimelineRange,
+  getOptionalReminderPercents,
+  getDateEndSlot,
+  formatReminderTriggersPreview,
+  DEFAULT_DATE_END_SLOT,
   itemToFormState,
   itemToAssignState,
   toApiPayload,
@@ -14,9 +18,11 @@ import {
   TimelineItemInput,
   validateTimelineItemInput,
   showLaunchEndDateReminder,
+  DateEndSlot,
 } from '@/lib/timeline-utils';
 import AssignEmailFields from '@/components/AssignEmailFields';
 import TimelineScheduleFields from '@/components/TimelineScheduleFields';
+import ReminderTriggerFields from '@/components/ReminderTriggerFields';
 
 interface Props {
   timelineType: import('@/lib/types').TimelineType;
@@ -30,7 +36,7 @@ interface Props {
       status: string;
       start_date: string;
       due_date: string;
-      custom_fields: Record<string, string | number>;
+      custom_fields: Record<string, CustomFieldValue>;
     }>
   ) => Promise<{ emailSent?: number } | void>;
   onDelete: (id: number) => Promise<void>;
@@ -40,6 +46,8 @@ function statusBadgeClass(status: TimelineItem['status']) {
   switch (status) {
     case 'completed':
       return 'badge-completed';
+    case 'hold':
+      return 'badge-hold';
     case 'in_progress':
       return 'badge-progress';
     default:
@@ -113,6 +121,8 @@ function TimelineItemCard({
   const [endDate, setEndDate] = useState(formDefaults.end_date);
   const [startTime, setStartTime] = useState(formDefaults.start_time);
   const [endDurationHours, setEndDurationHours] = useState(formDefaults.end_duration_hours);
+  const [endDateSlot, setEndDateSlot] = useState<DateEndSlot>(formDefaults.date_end_slot);
+  const [reminderPercents, setReminderPercents] = useState<number[]>(formDefaults.reminder_percents);
   const [saving, setSaving] = useState(false);
   const [editError, setEditError] = useState('');
   const [editSuccess, setEditSuccess] = useState('');
@@ -129,6 +139,8 @@ function TimelineItemCard({
     setEndDate(s.end_date);
     setStartTime(s.start_time);
     setEndDurationHours(s.end_duration_hours);
+    setEndDateSlot(s.date_end_slot);
+    setReminderPercents(s.reminder_percents);
   };
 
   const handleStatusChange = (nextStatus: TimelineItem['status']) => {
@@ -150,6 +162,8 @@ function TimelineItemCard({
       end_date: endDate,
       start_time: startTime,
       end_duration_hours: endDurationHours,
+      date_end_slot: endDateSlot,
+      reminder_percents: reminderPercents,
     };
 
     const validationError = validateTimelineItemInput(input);
@@ -190,6 +204,15 @@ function TimelineItemCard({
 
   const mainAssignee = getAssignMain(item);
   const ccList = getAssignCcList(item);
+  const reminderPreview = formatReminderTriggersPreview({
+    timeline_mode: formDefaults.timeline_mode,
+    start_date: item.start_date || '',
+    end_date: item.due_date || '',
+    start_time: String(item.custom_fields?.start_time || ''),
+    end_duration_hours: Number(item.custom_fields?.end_duration_hours || 1),
+    date_end_slot: getDateEndSlot(item) ?? DEFAULT_DATE_END_SLOT,
+    reminder_percents: getOptionalReminderPercents(item),
+  });
 
   return (
     <div className="timeline-card">
@@ -206,12 +229,24 @@ function TimelineItemCard({
               onModeChange={setTimelineMode}
               startDate={startDate}
               endDate={endDate}
+              endDateSlot={endDateSlot}
               startTime={startTime}
               endDurationHours={endDurationHours}
               onStartDateChange={setStartDate}
               onEndDateChange={setEndDate}
+              onEndDateSlotChange={setEndDateSlot}
               onStartTimeChange={setStartTime}
               onEndDurationChange={setEndDurationHours}
+            />
+            <ReminderTriggerFields
+              timelineMode={timelineMode}
+              startDate={startDate}
+              endDate={endDate}
+              endDateSlot={endDateSlot}
+              startTime={startTime}
+              endDurationHours={endDurationHours}
+              reminderPercents={reminderPercents}
+              onReminderPercentsChange={setReminderPercents}
             />
             <div>
               <label className="mb-1 block text-xs font-semibold text-slate-600">Status *</label>
@@ -220,8 +255,8 @@ function TimelineItemCard({
                 value={status}
                 onChange={(e) => handleStatusChange(e.target.value as TimelineItem['status'])}
               >
-                {Object.entries(STATUS_LABELS).map(([v, l]) => (
-                  <option key={v} value={v}>{l}</option>
+                {statusOptionsForSelect(status).map((v) => (
+                  <option key={v} value={v}>{STATUS_LABELS[v]}</option>
                 ))}
               </select>
             </div>
@@ -276,6 +311,17 @@ function TimelineItemCard({
                 <path strokeLinecap="round" strokeLinejoin="round" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
               </svg>
               {formatTimelineRange(item)}
+            </p>
+            <p className="mt-1 text-[10px] text-slate-400">
+              <span className="text-emerald-700">75%, 100%</span>
+              {getOptionalReminderPercents(item).length > 0 && (
+                <>
+                  {' + '}
+                  <span className="text-amber-700">{getOptionalReminderPercents(item).map((p) => `${p}%`).join(', ')}</span>
+                </>
+              )}
+              {' · '}
+              {reminderPreview.totalCount} emails
             </p>
             <div className="mt-3 flex gap-2">
               <button

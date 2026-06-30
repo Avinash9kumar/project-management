@@ -25,7 +25,7 @@ CREATE TABLE IF NOT EXISTS timeline_items (
   timeline_type VARCHAR(50) NOT NULL,
   title VARCHAR(255) NOT NULL,
   description TEXT NULL,
-  status ENUM('pending', 'in_progress', 'completed') DEFAULT 'pending',
+  status ENUM('pending', 'in_progress', 'hold', 'completed') DEFAULT 'pending',
   start_date DATE NULL,
   due_date DATE NULL,
   sort_order INT UNSIGNED DEFAULT 0,

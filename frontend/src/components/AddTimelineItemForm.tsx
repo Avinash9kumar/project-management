@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { ProjectStatus, STATUS_LABELS, TimelineType } from '@/lib/types';
+import { ProjectStatus, STATUS_LABELS, TimelineType, statusOptionsForSelect } from '@/lib/types';
 import {
   todayISO,
   joinAssignTo,
@@ -9,10 +9,15 @@ import {
   TimelineItemInput,
   validateTimelineItemInput,
   showLaunchEndDateReminder,
+  showProgrammingQuestionnaireReminder,
+  DEFAULT_DATE_END_SLOT,
+  DateEndSlot,
+  DEFAULT_OPTIONAL_REMINDER_PERCENTS,
 } from '@/lib/timeline-utils';
 import { getTimelineFormDefaults } from '@/lib/timeline-tab-defaults';
 import AssignEmailFields from '@/components/AssignEmailFields';
 import TimelineScheduleFields from '@/components/TimelineScheduleFields';
+import ReminderTriggerFields from '@/components/ReminderTriggerFields';
 
 interface Props {
   timelineType: TimelineType;
@@ -32,6 +37,8 @@ export default function AddTimelineItemForm({ timelineType, timelineLabel, onSub
   const [endDate, setEndDate] = useState('');
   const [startTime, setStartTime] = useState('');
   const [endDurationHours, setEndDurationHours] = useState(tabDefaults.endDurationHours);
+  const [endDateSlot, setEndDateSlot] = useState<DateEndSlot>(DEFAULT_DATE_END_SLOT);
+  const [reminderPercents, setReminderPercents] = useState<number[]>([...DEFAULT_OPTIONAL_REMINDER_PERCENTS]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
@@ -47,6 +54,8 @@ export default function AddTimelineItemForm({ timelineType, timelineLabel, onSub
     setEndDate('');
     setStartTime(currentTimeSlot());
     setEndDurationHours(defaults.endDurationHours);
+    setEndDateSlot(DEFAULT_DATE_END_SLOT);
+    setReminderPercents([...DEFAULT_OPTIONAL_REMINDER_PERCENTS]);
   };
 
   useEffect(() => {
@@ -68,6 +77,8 @@ export default function AddTimelineItemForm({ timelineType, timelineLabel, onSub
       end_date: endDate,
       start_time: startTime,
       end_duration_hours: endDurationHours,
+      date_end_slot: endDateSlot,
+      reminder_percents: reminderPercents,
     };
 
     const validationError = validateTimelineItemInput(input);
@@ -82,6 +93,7 @@ export default function AddTimelineItemForm({ timelineType, timelineLabel, onSub
     try {
       const result = await onSubmit(input);
       applyTabDefaults();
+      showProgrammingQuestionnaireReminder(timelineType);
       if (result?.emailSent && result.emailSent > 0) {
         setSuccess(
           result.emailSent === 1
@@ -121,12 +133,25 @@ export default function AddTimelineItemForm({ timelineType, timelineLabel, onSub
           onModeChange={setTimelineMode}
           startDate={startDate}
           endDate={endDate}
+          endDateSlot={endDateSlot}
           startTime={startTime}
           endDurationHours={endDurationHours}
           onStartDateChange={setStartDate}
           onEndDateChange={setEndDate}
+          onEndDateSlotChange={setEndDateSlot}
           onStartTimeChange={setStartTime}
           onEndDurationChange={setEndDurationHours}
+        />
+
+        <ReminderTriggerFields
+          timelineMode={timelineMode}
+          startDate={startDate}
+          endDate={endDate}
+          startTime={startTime}
+          endDurationHours={endDurationHours}
+          endDateSlot={endDateSlot}
+          reminderPercents={reminderPercents}
+          onReminderPercentsChange={setReminderPercents}
         />
 
         <div className="relative z-10">
@@ -136,8 +161,8 @@ export default function AddTimelineItemForm({ timelineType, timelineLabel, onSub
             value={status}
             onChange={(e) => setStatus(e.target.value as ProjectStatus)}
           >
-            {Object.entries(STATUS_LABELS).map(([value, label]) => (
-              <option key={value} value={value}>{label}</option>
+            {statusOptionsForSelect(status).map((value) => (
+              <option key={value} value={value}>{STATUS_LABELS[value]}</option>
             ))}
           </select>
         </div>

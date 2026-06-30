@@ -3,7 +3,7 @@
 import { useMemo, useState, useRef, useEffect } from 'react';
 import Link from 'next/link';
 import { useAssignees } from '@/context/AssigneeContext';
-import { SELF_ASSIGNEE, DEFAULT_ASSIGNEE_EMAILS } from '@/lib/assignees';
+import { DEFAULT_ASSIGNEE_EMAILS } from '@/lib/assignees';
 
 interface Props {
   mainAssign: string;
@@ -29,7 +29,7 @@ export default function AssignEmailFields({
   const ccRef = useRef<HTMLDivElement>(null);
 
   const emailPool = assigneeValues.length > 0 ? assigneeValues : [...DEFAULT_ASSIGNEE_EMAILS];
-  const options = useMemo(() => [SELF_ASSIGNEE, ...emailPool], [emailPool]);
+  const options = useMemo(() => emailPool, [emailPool]);
   const ccOptions = useMemo(
     () => options.filter((email) => email !== mainAssign),
     [options, mainAssign]
@@ -169,7 +169,7 @@ export default function AssignEmailFields({
         <Link href="/assignees/" className="font-medium text-indigo-600 hover:underline">
           Assignees page
         </Link>
-        .
+        . Manager (avinash@ae-research.com) is CC&apos;d on every timeline email.
       </p>
 
       {(mainAssign || ccAssign.length > 0) && (

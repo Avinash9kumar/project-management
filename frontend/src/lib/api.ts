@@ -1,4 +1,4 @@
-import { Project, TimelineItem, User, CustomFieldDefinition, TimelineReportItem, Assignee } from './types';
+import { Project, TimelineItem, User, CustomFieldDefinition, TimelineReportItem, Assignee, CustomFieldValue } from './types';
 import { appPath } from './config';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || '/api';
@@ -132,6 +132,7 @@ export interface TimelineEmailNotifications {
 export interface CreateTimelineItemResult {
   item: TimelineItem;
   notifications?: TimelineEmailNotifications;
+  programming_questionnaire?: TimelineEmailNotifications;
 }
 export async function getTimelineItems(
   projectId: number,
@@ -179,7 +180,7 @@ export async function createTimelineItem(item: {
   start_date?: string;
   due_date?: string;
   sort_order?: number;
-  custom_fields?: Record<string, string | number>;
+  custom_fields?: Record<string, CustomFieldValue>;
 }): Promise<CreateTimelineItemResult> {
   const title = item.title?.trim() ?? '';
 
@@ -219,7 +220,7 @@ export async function updateTimelineItem(
     start_date: string;
     due_date: string;
     sort_order: number;
-    custom_fields: Record<string, string | number>;
+    custom_fields: Record<string, CustomFieldValue>;
   }>
 ): Promise<{ item: TimelineItem; notifications?: { sent: number } }> {
   const data = await request<{ item: TimelineItem; notifications?: { sent: number } }>(`/timeline/${id}`, {

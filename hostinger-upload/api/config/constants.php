@@ -26,7 +26,7 @@ const TIMELINE_LABELS = [
     'project_end_date' => 'Project End Date',
 ];
 
-const VALID_STATUSES = ['pending', 'in_progress', 'completed'];
+const VALID_STATUSES = ['pending', 'in_progress', 'hold', 'completed'];
 
 const PUBLIC_ROUTES = ['auth', 'cron'];
 
