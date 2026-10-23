@@ -523,6 +523,56 @@ function markTimelinePassedNotified(PDO $db, int $itemId, array $customFields, ?
     $stmt->execute([json_encode($customFields), $itemId]);
 }
 
+function resetTimelineReminderStateForScheduleChange(
+    array &$customFields,
+    ?string $startDate,
+    ?string $dueDate,
+    ?int $now = null
+): void {
+    $now = $now ?? time();
+
+    $item = [
+        'start_date' => $startDate,
+        'due_date' => $dueDate,
+        'custom_fields' => $customFields,
+    ];
+
+    $window = getTimelineItemTimeWindow($item);
+
+    if ($window === null) {
+        unset(
+            $customFields['email_reminders_sent'],
+            $customFields['timeline_passed_notified'],
+            $customFields['overdue_last_sent_at']
+        );
+
+        return;
+    }
+
+    // Schedule end moved to the future — start a fresh overdue cycle for the new window.
+    if ($now < $window['end']) {
+        unset($customFields['overdue_last_sent_at'], $customFields['timeline_passed_notified']);
+    }
+
+    $duration = max($window['end'] - $window['start'], 1);
+    $alreadyPassed = [];
+
+    foreach (getItemReminderThresholds($item) as $threshold) {
+        $triggerTs = $window['start'] + (int) round($duration * ($threshold / 100));
+        if ($now >= $triggerTs) {
+            $alreadyPassed[] = $threshold;
+        }
+    }
+
+    if ($alreadyPassed === []) {
+        unset($customFields['email_reminders_sent']);
+    } else {
+        sort($alreadyPassed);
+        $customFields['email_reminders_sent'] = array_values(array_unique($alreadyPassed));
+    }
+}
+
+/** @deprecated Use resetTimelineReminderStateForScheduleChange() */
 function resetTimelineReminderState(array &$customFields): void
 {
     unset(
@@ -539,6 +589,7 @@ function processTimelineReminders(PDO $db): array
          FROM timeline_items ti
          INNER JOIN projects p ON p.id = ti.project_id
          WHERE ti.status NOT IN (\'completed\', \'hold\')
+         AND ti.timeline_type <> \'quick\'
          AND ti.start_date IS NOT NULL'
     );
     $rows = $stmt->fetchAll();
@@ -552,6 +603,7 @@ function processTimelineReminders(PDO $db): array
         'skipped_completed' => 0,
         'skipped_hold' => 0,
         'items' => [],
+        'errors' => [],
     ];
 
     foreach ($rows as $row) {
@@ -600,6 +652,12 @@ function processTimelineReminders(PDO $db): array
                     'id' => $itemId,
                     'type' => 'overdue',
                 ];
+            } elseif ($assigneeResult['failed'] > 0) {
+                $summary['errors'][] = [
+                    'id' => $itemId,
+                    'type' => 'overdue',
+                    'error' => getMailTransportError(),
+                ];
             }
 
             continue;
@@ -638,6 +696,13 @@ function processTimelineReminders(PDO $db): array
             $summary['items'][] = [
                 'id' => $itemId,
                 'thresholds' => [$threshold],
+            ];
+        } elseif ($result['failed'] > 0) {
+            $summary['errors'][] = [
+                'id' => $itemId,
+                'type' => 'reminder',
+                'threshold' => $threshold,
+                'error' => getMailTransportError(),
             ];
         }
     }

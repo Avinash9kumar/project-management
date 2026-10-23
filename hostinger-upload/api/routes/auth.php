@@ -11,22 +11,29 @@ function handleAuthRoute(array $segments): void
         $input = getJsonInput();
         $username = trim($input['username'] ?? '');
         $password = $input['password'] ?? '';
+        $loginMode = trim((string) ($input['login_mode'] ?? 'main'));
 
         if ($username === '' || $password === '') {
             jsonResponse(['error' => 'Username and password are required'], 400);
         }
 
-        if (!verifyCredentials($username, $password)) {
+        if (!in_array($loginMode, ['main', 'employee'], true)) {
+            $loginMode = 'main';
+        }
+
+        $auth = authenticateLogin($username, $password, $loginMode);
+        if ($auth === null) {
             jsonResponse(['error' => 'Invalid username or password'], 401);
         }
 
-        $token = generateToken($username);
+        $token = generateToken($auth['username'], $auth['role']);
 
         jsonResponse([
             'token' => $token,
             'user' => [
                 'id' => 1,
-                'username' => $username,
+                'username' => $auth['username'],
+                'role' => $auth['role'],
             ],
         ]);
     }
@@ -38,6 +45,7 @@ function handleAuthRoute(array $segments): void
             'user' => [
                 'id' => (int) ($auth['user_id'] ?? 1),
                 'username' => $auth['username'],
+                'role' => $auth['role'] ?? 'main',
             ],
         ]);
     }

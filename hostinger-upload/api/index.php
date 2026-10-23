@@ -61,7 +61,11 @@ try {
     }
 
     if (!isPublicRoute($segments)) {
-        requireAuth();
+        if (isEmployeeReportRoute($segments)) {
+            requireAuth();
+        } else {
+            requireMainAuth();
+        }
     }
 
     $resource = $segments[0];

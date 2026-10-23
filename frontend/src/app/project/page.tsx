@@ -22,7 +22,7 @@ import {
 } from '@/lib/types';
 import TimelineTab from '@/components/TimelineTab';
 import AddTimelineItemForm from '@/components/AddTimelineItemForm';
-import AuthGuard from '@/components/AuthGuard';
+import MainAuthGuard from '@/components/MainAuthGuard';
 import { toApiPayload } from '@/lib/timeline-utils';
 
 const GanttChart = dynamic(() => import('@/components/GanttChart'), {
@@ -40,9 +40,20 @@ type ViewMode = TimelineType | 'gantt';
 function ProjectDetailContent() {
   const searchParams = useSearchParams();
   const projectId = Number(searchParams.get('id'));
+  const tabParam = searchParams.get('tab');
+  const itemParam = searchParams.get('item');
+
+  const initialTab: ViewMode =
+    tabParam && TIMELINE_TYPES.includes(tabParam as TimelineType)
+      ? (tabParam as TimelineType)
+      : 'gantt';
+  const highlightItemId = (() => {
+    const id = Number(itemParam);
+    return id > 0 ? id : undefined;
+  })();
 
   const [project, setProject] = useState<Project | null>(null);
-  const [activeTab, setActiveTab] = useState<ViewMode>('gantt');
+  const [activeTab, setActiveTab] = useState<ViewMode>(initialTab);
   const [items, setItems] = useState<TimelineItem[]>([]);
   const [allItems, setAllItems] = useState<TimelineItem[]>([]);
   const [loading, setLoading] = useState(true);
@@ -96,6 +107,12 @@ function ProjectDetailContent() {
     };
     init();
   }, [projectId]);
+
+  useEffect(() => {
+    if (tabParam && TIMELINE_TYPES.includes(tabParam as TimelineType)) {
+      setActiveTab(tabParam as TimelineType);
+    }
+  }, [tabParam]);
 
   useEffect(() => {
     if (!projectId || isNaN(projectId) || activeTab === 'gantt') return;
@@ -250,6 +267,7 @@ function ProjectDetailContent() {
                   timelineType={activeTab}
                   items={items}
                   loading={itemsLoading}
+                  highlightItemId={highlightItemId}
                   onUpdate={handleUpdateItem}
                   onDelete={handleDeleteItem}
                 />
@@ -264,7 +282,7 @@ function ProjectDetailContent() {
 
 export default function ProjectPage() {
   return (
-    <AuthGuard>
+    <MainAuthGuard>
       <Suspense
         fallback={
           <div className="card p-12 text-center">
@@ -274,6 +292,6 @@ export default function ProjectPage() {
       >
         <ProjectDetailContent />
       </Suspense>
-    </AuthGuard>
+    </MainAuthGuard>
   );
 }

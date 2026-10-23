@@ -21,7 +21,7 @@ import {
 } from '@/lib/timeline-utils';
 import { DEFAULT_ASSIGNEE_EMAILS } from '@/lib/assignees';
 import { useAssignees } from '@/context/AssigneeContext';
-import AuthGuard from '@/components/AuthGuard';
+import MainAuthGuard from '@/components/MainAuthGuard';
 import ReportTimelineEditModal from '@/components/ReportTimelineEditModal';
 
 type ReportStatusFilter = 'all' | 'pending' | 'in_progress' | 'overdue' | 'completed';
@@ -94,7 +94,9 @@ function EmployeeRow({
   const remainingMs =
     item.remaining_seconds !== null ? item.remaining_seconds * 1000 : null;
   const tabLabel =
-    TIMELINE_TAB_LABELS[item.timeline_type as TimelineType] || item.timeline_type;
+    String(item.timeline_type) === 'quick'
+      ? 'Quick'
+      : TIMELINE_TAB_LABELS[item.timeline_type as TimelineType] || item.timeline_type;
   const ccAssign = joinAssignTo(getAssignCcList(item));
 
   return (
@@ -169,12 +171,14 @@ function EmployeeCard({
   const remainingMs =
     item.remaining_seconds !== null ? item.remaining_seconds * 1000 : null;
   const tabLabel =
-    TIMELINE_TAB_LABELS[item.timeline_type as TimelineType] || item.timeline_type;
+    String(item.timeline_type) === 'quick'
+      ? 'Quick'
+      : TIMELINE_TAB_LABELS[item.timeline_type as TimelineType] || item.timeline_type;
   const ccAssign = joinAssignTo(getAssignCcList(item));
 
   return (
     <div className="card p-4">
-      <div className="flex items-start justify-between gap-2">
+      <div className="flex flex-wrap items-start justify-between gap-2">
         <div className="flex flex-wrap items-center gap-2" onClick={onOpen} role="button">
           <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-slate-100 text-xs font-bold text-slate-500">
             {rank}
@@ -305,8 +309,12 @@ export default function EmployeeReportPage() {
     return employeeItems.filter((item) => matchesReportStatusFilter(item, statusFilter));
   }, [employeeItems, statusFilter]);
 
-  const openProject = (projectId: number) => {
-    router.push(`/project/?id=${projectId}`);
+  const openProject = (item: TimelineReportItem) => {
+    if (String(item.timeline_type) === 'quick') {
+      setEditingItem(item);
+      return;
+    }
+    router.push(`/project/?id=${item.project_id}`);
   };
 
   const handleSave = async (
@@ -320,7 +328,9 @@ export default function EmployeeReportPage() {
 
   const handleDelete = async (item: TimelineReportItem) => {
     const tabLabel =
-      TIMELINE_TAB_LABELS[item.timeline_type as TimelineType] || item.timeline_type;
+      String(item.timeline_type) === 'quick'
+      ? 'Quick'
+      : TIMELINE_TAB_LABELS[item.timeline_type as TimelineType] || item.timeline_type;
     const label = `${item.project_title} · ${tabLabel}`;
     if (!confirm(`Delete this timeline item?\n\n${label}`)) return;
     try {
@@ -332,9 +342,10 @@ export default function EmployeeReportPage() {
   };
 
   return (
-    <AuthGuard>
+    <MainAuthGuard>
       <div className="page-enter space-y-6">
         <div>
+          <p className="page-kicker">People</p>
           <h1 className="page-title">Employee Report</h1>
         </div>
 
@@ -420,7 +431,7 @@ export default function EmployeeReportPage() {
                   key={item.id}
                   item={item}
                   rank={index + 1}
-                  onOpen={() => openProject(item.project_id)}
+                  onOpen={() => openProject(item)}
                   onEdit={() => setEditingItem(item)}
                   onDelete={() => handleDelete(item)}
                 />
@@ -448,7 +459,7 @@ export default function EmployeeReportPage() {
                       key={item.id}
                       item={item}
                       rank={index + 1}
-                      onOpen={() => openProject(item.project_id)}
+                      onOpen={() => openProject(item)}
                       onEdit={() => setEditingItem(item)}
                       onDelete={() => handleDelete(item)}
                     />
@@ -469,6 +480,6 @@ export default function EmployeeReportPage() {
         onClose={() => setEditingItem(null)}
         onSave={handleSave}
       />
-    </AuthGuard>
+    </MainAuthGuard>
   );
 }

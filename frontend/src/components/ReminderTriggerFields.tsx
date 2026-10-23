@@ -19,6 +19,7 @@ interface Props {
   endDurationHours: number;
   reminderPercents: number[];
   onReminderPercentsChange: (value: number[]) => void;
+  alertsOnly?: boolean;
 }
 
 function shortWhen(detail: string): string {
@@ -36,6 +37,7 @@ export default function ReminderTriggerFields({
   endDurationHours,
   reminderPercents,
   onReminderPercentsChange,
+  alertsOnly = false,
 }: Props) {
   const [showWhen, setShowWhen] = useState(false);
 
@@ -70,7 +72,7 @@ export default function ReminderTriggerFields({
       <div className="flex items-baseline justify-between gap-2">
         <span className="text-[11px] font-semibold text-slate-700">Reminders</span>
         <span className="shrink-0 text-[10px] tabular-nums text-slate-400">
-          {preview.totalCount} email{preview.totalCount !== 1 ? 's' : ''}
+          {preview.totalCount} {alertsOnly ? 'alert' : 'email'}{preview.totalCount !== 1 ? 's' : ''}
         </span>
       </div>
 
@@ -89,7 +91,7 @@ export default function ReminderTriggerFields({
               title={on ? `Remove ${value}% reminder` : `Add ${value}% reminder`}
               aria-pressed={on}
               onClick={() => togglePercent(value)}
-              className={`h-5 min-w-[1.75rem] rounded px-1 text-[10px] font-semibold leading-none transition ${
+              className={`h-8 min-w-[2.5rem] rounded-lg px-2 text-xs font-semibold leading-none transition ${
                 on
                   ? 'bg-amber-500 text-white shadow-sm'
                   : 'bg-white text-slate-600 ring-1 ring-slate-200 hover:bg-amber-50 hover:ring-amber-300'

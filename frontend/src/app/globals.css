@@ -24,17 +24,17 @@
   body {
     @apply bg-[var(--bg-page)] text-slate-900 antialiased;
     background-image:
-      radial-gradient(ellipse 80% 50% at 50% -20%, rgba(99, 102, 241, 0.12), transparent),
-      radial-gradient(ellipse 60% 40% at 100% 0%, rgba(14, 165, 233, 0.08), transparent);
-    background-attachment: fixed;
+      radial-gradient(ellipse 70% 45% at 0% -10%, rgba(99, 102, 241, 0.16), transparent 55%),
+      radial-gradient(ellipse 50% 35% at 100% 0%, rgba(14, 165, 233, 0.1), transparent 50%),
+      linear-gradient(180deg, #f8f7ff 0%, #f4f6fb 28%, #f4f6fb 100%);
     -webkit-tap-highlight-color: transparent;
   }
 
-  @media (max-width: 768px) {
-    body {
-      background-image: none;
-      background-attachment: scroll;
-    }
+  html,
+  body {
+    min-height: 100%;
+    overflow-x: hidden;
+    overflow-y: auto;
   }
 
   @media (prefers-reduced-motion: reduce) {
@@ -58,11 +58,11 @@
   }
 
   .btn-primary {
-    @apply inline-flex min-h-[44px] items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-indigo-600 to-indigo-500 px-4 py-2.5 text-sm font-semibold text-white shadow-md shadow-indigo-500/20 transition hover:from-indigo-500 hover:to-indigo-600 hover:shadow-lg hover:shadow-indigo-500/25 active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-50 disabled:shadow-none;
+    @apply inline-flex min-h-[44px] items-center justify-center gap-2 rounded-xl bg-gradient-to-br from-indigo-600 via-indigo-500 to-violet-600 px-4 py-2.5 text-sm font-semibold text-white shadow-lg shadow-indigo-500/25 ring-1 ring-white/20 transition hover:brightness-110 hover:shadow-xl hover:shadow-indigo-500/30 active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-50 disabled:shadow-none;
   }
 
   .btn-secondary {
-    @apply inline-flex min-h-[44px] items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-medium text-slate-700 shadow-sm transition hover:border-slate-300 hover:bg-slate-50 active:scale-[0.98];
+    @apply inline-flex min-h-[44px] items-center justify-center gap-2 rounded-xl border border-slate-200/90 bg-white/90 px-4 py-2.5 text-sm font-medium text-slate-700 shadow-sm backdrop-blur transition hover:border-indigo-200 hover:bg-indigo-50/60 hover:text-indigo-800 active:scale-[0.98];
   }
 
   .btn-danger {
@@ -74,31 +74,51 @@
   }
 
   .input-field {
-    @apply w-full rounded-xl border border-slate-200 bg-white px-3.5 py-2.5 text-sm text-slate-900 shadow-sm outline-none transition placeholder:text-slate-400 focus:border-indigo-400 focus:ring-4 focus:ring-indigo-500/10;
+    @apply w-full rounded-xl border border-slate-200 bg-white/90 px-3.5 py-2.5 text-sm text-slate-900 shadow-sm outline-none transition placeholder:text-slate-400 focus:border-indigo-400 focus:bg-white focus:ring-4 focus:ring-indigo-500/15;
   }
 
   select.input-field {
     @apply pr-8;
   }
 
+  @media (max-width: 640px) {
+    .input-field,
+    select.input-field,
+    textarea.input-field {
+      font-size: 16px;
+    }
+  }
+
   .card {
-    @apply rounded-2xl border border-slate-200/80 bg-white shadow-sm shadow-slate-200/50;
+    @apply rounded-2xl border border-white/80 bg-white/90 shadow-sm shadow-slate-200/70 ring-1 ring-slate-200/60 backdrop-blur-sm;
   }
 
   .card-elevated {
-    @apply rounded-2xl border border-slate-200/60 bg-white shadow-xl shadow-slate-300/20;
+    @apply rounded-[1.35rem] border border-white/70 bg-white shadow-2xl shadow-slate-400/20 ring-1 ring-slate-200/70;
   }
 
   .nav-dark {
-    @apply border-b border-white/10 bg-gradient-to-r from-slate-900 via-slate-800 to-slate-900 text-white shadow-lg shadow-slate-900/20;
+    @apply border-b border-white/10 bg-slate-950/90 text-white shadow-lg shadow-slate-950/20 backdrop-blur-xl;
+  }
+
+  .nav-link {
+    @apply shrink-0 rounded-full px-3 py-1.5 text-xs font-medium text-white/70 transition hover:bg-white/10 hover:text-white sm:text-sm;
+  }
+
+  .nav-link-active {
+    @apply bg-white text-slate-900 shadow-sm hover:bg-white hover:text-slate-900;
   }
 
   .table-header {
-    @apply border-b border-slate-100 bg-slate-50/80 px-4 py-3 text-left text-[11px] font-semibold uppercase tracking-wider text-slate-500;
+    @apply border-b border-slate-100 bg-slate-50/90 px-4 py-3 text-left text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-500;
   }
 
   .table-cell {
-    @apply border-b border-slate-50 px-4 py-3.5 text-sm text-slate-700;
+    @apply border-b border-slate-100/80 px-4 py-3.5 text-sm text-slate-700;
+  }
+
+  tbody tr {
+    @apply transition-colors hover:bg-indigo-50/50;
   }
 
   .badge {
@@ -134,7 +154,7 @@
   }
 
   .tab-pill-active {
-    @apply tab-pill bg-indigo-600 text-white shadow-md shadow-indigo-500/25;
+    @apply tab-pill bg-gradient-to-br from-indigo-600 to-violet-600 text-white shadow-md shadow-indigo-500/25;
   }
 
   .tab-pill-inactive {
@@ -150,11 +170,24 @@
   }
 
   .modal-overlay {
-    @apply fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 p-4 backdrop-blur-sm;
+    @apply fixed inset-0 z-50 flex items-stretch justify-center overflow-hidden bg-slate-900/50 p-0 backdrop-blur-sm sm:items-center sm:p-4;
   }
 
   .modal-panel {
-    @apply card-elevated w-full max-w-md animate-slide-up p-6;
+    @apply card-elevated w-full max-w-md max-h-full overflow-y-auto overscroll-contain rounded-none p-5 pb-[max(1.25rem,env(safe-area-inset-bottom))] pt-[max(1.25rem,env(safe-area-inset-top))] animate-slide-up sm:max-h-[min(90dvh,40rem)] sm:rounded-2xl sm:p-6;
+  }
+
+  .modal-sheet {
+    @apply flex h-full max-h-full flex-col overflow-hidden rounded-none p-0 pt-[env(safe-area-inset-top)] sm:h-auto sm:max-h-[min(92dvh,44rem)] sm:rounded-2xl sm:pt-0;
+  }
+
+  .modal-sheet-body {
+    @apply min-h-0 flex-1 space-y-4 overflow-y-auto overscroll-contain px-4 py-4 sm:px-6;
+  }
+
+  .modal-sheet-bar {
+    @apply relative z-10 flex shrink-0 gap-2 border-t border-slate-100 bg-white px-4 py-3 sm:justify-end sm:px-6;
+    padding-bottom: max(0.75rem, env(safe-area-inset-bottom));
   }
 
   .search-input {
@@ -162,7 +195,7 @@
   }
 
   .projects-toolbar {
-    @apply relative overflow-hidden rounded-2xl border border-slate-200/80 bg-white p-4 shadow-sm shadow-slate-200/60 sm:p-5;
+    @apply relative overflow-hidden rounded-2xl border border-white/80 bg-white/90 p-4 shadow-sm shadow-slate-200/70 ring-1 ring-slate-200/60 backdrop-blur-sm sm:p-5;
   }
 
   .projects-toolbar::before {
@@ -171,7 +204,7 @@
   }
 
   .report-toolbar {
-    @apply relative overflow-hidden rounded-2xl border border-slate-200/80 bg-white p-4 shadow-sm shadow-slate-200/60 sm:p-5;
+    @apply relative overflow-hidden rounded-2xl border border-white/80 bg-white/90 p-4 shadow-sm shadow-slate-200/70 ring-1 ring-slate-200/60 backdrop-blur-sm sm:p-5;
   }
 
   .report-toolbar::before {
@@ -191,12 +224,16 @@
     @apply inline-flex items-center gap-2 rounded-xl border border-indigo-100 bg-gradient-to-br from-indigo-50 to-violet-50 px-3.5 py-2 text-sm whitespace-nowrap;
   }
 
+  .page-kicker {
+    @apply mb-1 text-[11px] font-semibold uppercase tracking-[0.18em] text-indigo-500;
+  }
+
   .page-title {
-    @apply text-2xl font-bold tracking-tight text-slate-900;
+    @apply text-2xl font-bold tracking-tight text-slate-950;
   }
 
   .page-subtitle {
-    @apply text-sm text-slate-500;
+    @apply text-sm leading-relaxed text-slate-500;
   }
 
   .empty-state {

@@ -7,6 +7,7 @@ export const TIMELINE_TYPES = [
   'tabs',
   'invite',
   'reminders',
+  'ppt',
   'project_end_date',
 ] as const;
 
@@ -21,6 +22,7 @@ export const TIMELINE_LABELS: Record<TimelineType, string> = {
   tabs: 'Tabs Timeline',
   invite: 'Invite Timeline',
   reminders: 'Reminders Timeline',
+  ppt: 'PPT Timeline',
   project_end_date: 'Project End Date',
 };
 
@@ -35,6 +37,7 @@ export const TIMELINE_TAB_LABELS: Record<TimelineType | 'gantt', string> = {
   tabs: 'Tabs',
   invite: 'Invite',
   reminders: 'Reminders',
+  ppt: 'PPT',
   project_end_date: 'End Date',
 };
 
@@ -55,6 +58,7 @@ export type CustomFieldValue = string | number | number[];
 export interface User {
   id: number;
   username: string;
+  role?: 'main' | 'employee';
 }
 
 export interface Project {
@@ -114,6 +118,7 @@ export interface Assignee {
   value: string;
   sort_order: number;
   created_at?: string;
+  report_url?: string;
 }
 
 export const STATUS_LABELS: Record<ProjectStatus, string> = {
@@ -139,5 +144,6 @@ export const GANTT_COLORS: Record<TimelineType, string> = {
   tabs: '#06b6d4',
   invite: '#ec4899',
   reminders: '#f97316',
+  ppt: '#6366f1',
   project_end_date: '#dc2626',
 };

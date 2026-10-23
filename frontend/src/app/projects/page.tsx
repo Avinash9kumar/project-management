@@ -6,7 +6,7 @@ import { Project } from '@/lib/types';
 import ProjectTable from '@/components/ProjectTable';
 import NewProjectModal from '@/components/NewProjectModal';
 import EditProjectModal from '@/components/EditProjectModal';
-import AuthGuard from '@/components/AuthGuard';
+import MainAuthGuard from '@/components/MainAuthGuard';
 
 export default function ProjectsPage() {
   const [projects, setProjects] = useState<Project[]>([]);
@@ -65,7 +65,7 @@ export default function ProjectsPage() {
   const isSearching = search.trim().length > 0;
 
   return (
-    <AuthGuard>
+    <MainAuthGuard>
       <div className="page-enter space-y-5">
         <div className="projects-toolbar">
           <div className="flex flex-col gap-4 xl:flex-row xl:items-center xl:gap-6">
@@ -76,7 +76,8 @@ export default function ProjectsPage() {
                 </svg>
               </div>
               <div>
-                <h1 className="text-xl font-bold tracking-tight text-slate-900 sm:text-2xl">Projects</h1>
+                <p className="page-kicker">Library</p>
+                <h1 className="page-title text-xl sm:text-2xl">Projects</h1>
               </div>
             </div>
 
@@ -181,6 +182,6 @@ export default function ProjectsPage() {
         onClose={() => setEditProject(null)}
         onSubmit={handleEdit}
       />
-    </AuthGuard>
+    </MainAuthGuard>
   );
 }

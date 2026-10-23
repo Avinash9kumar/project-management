@@ -13,31 +13,39 @@
  * Cron (every 5 minutes):
  */
 
-// */5 * * * * curl -s "https://dash-bot.net/project-management/api/cron/reminders?key=dash-bot-cron-reminders-2026"
+// */5 * * * * curl -s "https://dash-bot.net/project-management/api/cron/reminders?key=YOUR_CRON_SECRET"
 
 return [
     'host' => 'localhost',
     'database' => 'u511101901_project_manage',
     'username' => 'u511101901_project_manage',
-    'password' => 'Project_manage!11@11#11',
+    'password' => '',
     'charset' => 'utf8mb4',
 
     'base_path' => '/project-management',
-    'auth_secret' => 'dash-bot-project-mgmt-secret-2026',
-    'cron_secret' => 'dash-bot-cron-reminders-2026',
+    'auth_secret' => 'change-this-to-a-long-random-string',
+    'cron_secret' => 'change-this-cron-secret',
     'timezone' => 'Asia/Kolkata',
 
-    // Login: password = {username}@11#11
+    'auth_users' => [
+        'Avinash' => 'Avinash@@11##11',
+        'Paritosh' => 'Paritosh@@11##11',
+    ],
 
     'mail' => [
         'enabled' => true,
-        'from_email' => 'avinash@ae-research.com',
+        'from_email' => 'projects@dash-bot.net',
         'from_name' => 'Project Timeline Tracker',
         'app_url' => 'https://dash-bot.net/project-management',
+        'smtp_host' => 'smtp.hostinger.com',
+        'smtp_port' => 465,
+        'smtp_username' => 'projects@dash-bot.net',
+        'smtp_password' => '',
         'self_email' => 'avinash@ae-research.com',
         'status_notify_email' => 'avinash@ae-research.com',
         'user_emails' => [
-            'avinash' => 'avinash@ae-research.com',
+            'Avinash' => 'avinash@ae-research.com',
+            'Paritosh' => 'paritosh@ae-research.com',
         ],
         'reminder_thresholds' => [75],
     ],

@@ -4,6 +4,7 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { AuthProvider, useAuth } from '@/context/AuthContext';
 import { AssigneeProvider } from '@/context/AssigneeContext';
+import { NotificationBell, NotificationWatcher } from '@/components/AppNotifications';
 
 function Header() {
   const { user, logout, loading } = useAuth();
@@ -34,10 +35,10 @@ function Header() {
     pathname?.includes('/employee/');
 
   return (
-    <header className="nav-dark sticky top-0 z-40">
-      <div className="mx-auto flex max-w-7xl items-center justify-between px-4 py-3 sm:px-6">
-        <Link href="/report/" className="group flex items-center gap-3">
-          <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-gradient-to-br from-indigo-500 to-violet-600 text-sm font-bold text-white shadow-lg shadow-indigo-500/30 transition group-hover:scale-105">
+    <header className="nav-dark sticky top-0 z-40 pt-[env(safe-area-inset-top)]">
+      <div className="mx-auto flex max-w-7xl flex-wrap items-center gap-2 px-3 py-2 sm:flex-nowrap sm:justify-between sm:px-6 sm:py-3">
+        <Link href="/report/" className="group mr-auto flex items-center gap-3">
+          <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-gradient-to-br from-indigo-400 to-violet-500 text-sm font-bold text-white shadow-lg shadow-indigo-500/40 ring-1 ring-white/30 transition group-hover:scale-105">
             PM
           </div>
           <div className="hidden sm:block">
@@ -46,49 +47,34 @@ function Header() {
           </div>
         </Link>
 
-        <nav className="flex items-center gap-2 text-sm">
+        <nav className="order-3 flex w-full items-center gap-1 overflow-x-auto pb-0.5 text-sm [-ms-overflow-style:none] [scrollbar-width:none] sm:order-none sm:w-auto sm:gap-2 sm:overflow-visible sm:pb-0 [&::-webkit-scrollbar]:hidden">
           <Link
             href="/report/"
-            className={`rounded-lg px-3 py-1.5 font-medium transition ${
-              isReport
-                ? 'bg-white/15 text-white'
-                : 'text-white/70 hover:bg-white/10 hover:text-white'
-            }`}
+            className={`nav-link ${isReport ? 'nav-link-active' : ''}`}
           >
             Report
           </Link>
           <Link
             href="/projects/"
-            className={`rounded-lg px-3 py-1.5 font-medium transition ${
-              isProjects || isProjectDetail
-                ? 'bg-white/15 text-white'
-                : 'text-white/70 hover:bg-white/10 hover:text-white'
-            }`}
+            className={`nav-link ${isProjects || isProjectDetail ? 'nav-link-active' : ''}`}
           >
             Projects
           </Link>
           <Link
             href="/employee/"
-            className={`rounded-lg px-3 py-1.5 font-medium transition ${
-              isEmployee
-                ? 'bg-white/15 text-white'
-                : 'text-white/70 hover:bg-white/10 hover:text-white'
-            }`}
+            className={`nav-link ${isEmployee ? 'nav-link-active' : ''}`}
           >
             Employee
           </Link>
           <Link
             href="/assignees/"
-            className={`rounded-lg px-3 py-1.5 font-medium transition ${
-              isAssignees
-                ? 'bg-white/15 text-white'
-                : 'text-white/70 hover:bg-white/10 hover:text-white'
-            }`}
+            className={`nav-link ${isAssignees ? 'nav-link-active' : ''}`}
           >
             Assignees
           </Link>
+          {!loading && user && user.role !== 'employee' && <NotificationBell />}
           {!loading && user && (
-            <div className="ml-2 flex items-center gap-2 border-l border-white/15 pl-3">
+            <div className="ml-1 flex shrink-0 items-center gap-1 border-l border-white/15 pl-2 sm:ml-2 sm:gap-2 sm:pl-3">
               <span className="hidden rounded-full bg-white/10 px-2.5 py-1 text-xs text-white/80 sm:inline">
                 {user.username}
               </span>
@@ -113,15 +99,19 @@ function AppShell({ children }: { children: React.ReactNode }) {
     pathname === '/login/' ||
     pathname?.endsWith('/login') ||
     pathname?.includes('/login/');
+  const isEmployeeView =
+    pathname === '/employee/view' ||
+    pathname === '/employee/view/' ||
+    pathname?.includes('/employee/view/');
 
-  if (isLogin) {
+  if (isLogin || isEmployeeView) {
     return <>{children}</>;
   }
 
   return (
     <div className="min-h-screen">
       <Header />
-      <main className="mx-auto max-w-7xl px-3 py-4 sm:px-6 sm:py-8">{children}</main>
+      <main className="mx-auto max-w-7xl px-3 py-4 pb-[max(1rem,env(safe-area-inset-bottom))] sm:px-6 sm:py-8">{children}</main>
     </div>
   );
 }
@@ -130,6 +120,7 @@ export default function Providers({ children }: { children: React.ReactNode }) {
   return (
     <AuthProvider>
       <AssigneeProvider>
+        <NotificationWatcher />
         <AppShell>{children}</AppShell>
       </AssigneeProvider>
     </AuthProvider>

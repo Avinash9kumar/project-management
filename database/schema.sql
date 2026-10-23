@@ -82,4 +82,6 @@ INSERT INTO custom_field_definitions (timeline_type, field_key, field_label, fie
   ('tabs', 'tab_count', 'Tab Count', 'number', NULL, 1),
   ('invite', 'invite_type', 'Invite Type', 'select', '["Client","Team","Vendor","Other"]', 1),
   ('reminders', 'reminder_type', 'Reminder Type', 'select', '["Follow-up","Meeting","Deadline","Other"]', 1),
+  ('ppt', 'presenter', 'Presenter', 'text', NULL, 1),
+  ('ppt', 'deck_status', 'Deck Status', 'select', '["Draft","Review","Final"]', 2),
   ('project_end_date', 'milestone_type', 'Milestone Type', 'select', '["Planning","Review","Final Delivery"]', 1);

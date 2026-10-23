@@ -6,8 +6,10 @@ import {
   TimelineType,
 } from '@/lib/types';
 
-export type ReportStatusFilter = 'all' | 'in_progress' | 'overdue' | 'completed';
+export type ReportStatusFilter = 'all' | 'in_progress' | 'hold' | 'overdue' | 'completed';
 export type TimelineTabFilter = 'all' | TimelineType;
+
+export const DEFAULT_REPORT_STATUS_FILTER: ReportStatusFilter = 'in_progress';
 
 const STATUS_OPTIONS: {
   id: ReportStatusFilter;
@@ -20,7 +22,7 @@ const STATUS_OPTIONS: {
   {
     id: 'all',
     label: 'All',
-    hint: 'Active tasks (excludes completed)',
+    hint: 'Every ticket, every status',
     activeClass: 'bg-white text-indigo-700 shadow-sm ring-1 ring-indigo-100',
     badgeActive: 'bg-indigo-100 text-indigo-700',
   },
@@ -30,6 +32,13 @@ const STATUS_OPTIONS: {
     hint: 'Active work',
     activeClass: 'bg-white text-sky-700 shadow-sm ring-1 ring-sky-100',
     badgeActive: 'bg-sky-100 text-sky-700',
+  },
+  {
+    id: 'hold',
+    label: 'Hold',
+    hint: 'Paused tasks',
+    activeClass: 'bg-white text-violet-700 shadow-sm ring-1 ring-violet-100',
+    badgeActive: 'bg-violet-100 text-violet-700',
   },
   {
     id: 'overdue',
@@ -76,7 +85,9 @@ export default function ReportFilters({
   onClearFilters,
 }: Props) {
   const hasActiveFilters =
-    statusFilter !== 'all' || timelineFilter !== 'all' || search.trim().length > 0;
+    statusFilter !== DEFAULT_REPORT_STATUS_FILTER ||
+    timelineFilter !== 'all' ||
+    search.trim().length > 0;
 
   const timelineOptions = TIMELINE_TYPES.filter((type) => timelineCounts[type] > 0);
 
@@ -247,10 +258,10 @@ export default function ReportFilters({
               <span className="text-slate-400">×</span>
             </button>
           )}
-          {statusFilter !== 'all' && (
+          {statusFilter !== DEFAULT_REPORT_STATUS_FILTER && (
             <button
               type="button"
-              onClick={() => onStatusFilterChange('all')}
+              onClick={() => onStatusFilterChange(DEFAULT_REPORT_STATUS_FILTER)}
               className="inline-flex items-center gap-1 rounded-lg bg-indigo-50 px-2.5 py-1 text-xs font-medium text-indigo-700 transition hover:bg-indigo-100"
             >
               {STATUS_OPTIONS.find((o) => o.id === statusFilter)?.label}

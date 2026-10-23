@@ -10,6 +10,7 @@ frontend/out/
 .env
 .env.local
 api/config/config.local.php
+hostinger-upload/api/config/config.local.php
 
 # OS
 .DS_Store

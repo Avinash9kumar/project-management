@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { TimelineItem, STATUS_LABELS, CustomFieldValue, statusOptionsForSelect } from '@/lib/types';
 import {
   getAssignMain,
@@ -28,6 +28,7 @@ interface Props {
   timelineType: import('@/lib/types').TimelineType;
   items: TimelineItem[];
   loading: boolean;
+  highlightItemId?: number;
   onUpdate: (
     id: number,
     updates: Partial<{
@@ -55,7 +56,7 @@ function statusBadgeClass(status: TimelineItem['status']) {
   }
 }
 
-export default function TimelineTab({ timelineType, items, loading, onUpdate, onDelete }: Props) {
+export default function TimelineTab({ timelineType, items, loading, highlightItemId, onUpdate, onDelete }: Props) {
   if (loading) {
     return (
       <div className="space-y-3 py-4">
@@ -88,6 +89,7 @@ export default function TimelineTab({ timelineType, items, loading, onUpdate, on
           item={item}
           index={index}
           timelineType={timelineType}
+          highlighted={highlightItemId === item.id}
           onUpdate={onUpdate}
           onDelete={onDelete}
         />
@@ -100,15 +102,18 @@ function TimelineItemCard({
   item,
   index,
   timelineType,
+  highlighted = false,
   onUpdate,
   onDelete,
 }: {
   item: TimelineItem;
   index: number;
   timelineType: Props['timelineType'];
+  highlighted?: boolean;
   onUpdate: Props['onUpdate'];
   onDelete: Props['onDelete'];
 }) {
+  const cardRef = useRef<HTMLDivElement>(null);
   const formDefaults = itemToFormState(item);
   const assignState = itemToAssignState(item);
   const [editing, setEditing] = useState(false);
@@ -126,6 +131,11 @@ function TimelineItemCard({
   const [saving, setSaving] = useState(false);
   const [editError, setEditError] = useState('');
   const [editSuccess, setEditSuccess] = useState('');
+
+  useEffect(() => {
+    if (!highlighted || !cardRef.current) return;
+    cardRef.current.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  }, [highlighted]);
 
   const loadEditState = () => {
     const s = itemToFormState(item);
@@ -215,7 +225,11 @@ function TimelineItemCard({
   });
 
   return (
-    <div className="timeline-card">
+    <div
+      ref={cardRef}
+      id={`timeline-item-${item.id}`}
+      className={`timeline-card transition-shadow ${highlighted ? 'ring-2 ring-indigo-500 ring-offset-2 shadow-md' : ''}`}
+    >
       <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl bg-slate-100 text-xs font-bold text-slate-500">
         {index + 1}
       </div>

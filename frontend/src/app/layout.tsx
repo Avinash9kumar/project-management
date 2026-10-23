@@ -13,11 +13,18 @@ const inter = Inter({
 export const metadata: Metadata = {
   title: 'Project Timeline Tracker',
   description: 'Track project timelines across programming, launch, QC, and more',
+  manifest: '/manifest.json',
+  appleWebApp: {
+    capable: true,
+    title: 'Timeline',
+    statusBarStyle: 'default',
+  },
 };
 
 export const viewport: Viewport = {
   width: 'device-width',
   initialScale: 1,
+  viewportFit: 'cover',
   themeColor: '#4f46e5',
 };
 

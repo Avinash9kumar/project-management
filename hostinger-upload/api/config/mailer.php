@@ -6,9 +6,13 @@ function getMailConfig(): array
 {
     $defaults = [
         'enabled' => true,
-        'from_email' => 'avinash@ae-research.com',
+        'from_email' => 'projects@dash-bot.net',
         'from_name' => 'Project Timeline Tracker',
         'app_url' => 'https://dash-bot.net/project-management',
+        'smtp_host' => 'smtp.hostinger.com',
+        'smtp_port' => 465,
+        'smtp_username' => 'projects@dash-bot.net',
+        'smtp_password' => '',
         'self_email' => 'avinash@ae-research.com',
         'status_notify_email' => 'avinash@ae-research.com',
         'user_emails' => [],
@@ -158,13 +162,8 @@ function getAllAssignmentRecipientEmails(array $customFields, string $assignToFa
 }
 
 /** @param string[] $ccRecipients */
-function appendAdminCc(array $ccRecipients, ?string $primaryTo): array
+function normalizeEmailCcList(array $ccRecipients): array
 {
-    $admin = getAdminEmail();
-    if ($primaryTo !== null && strtolower($primaryTo) === $admin) {
-        return $ccRecipients;
-    }
-
     $cc = [];
     foreach ($ccRecipients as $email) {
         $normalized = strtolower(trim((string) $email));
@@ -173,11 +172,28 @@ function appendAdminCc(array $ccRecipients, ?string $primaryTo): array
         }
     }
 
-    if (!in_array($admin, $cc, true)) {
-        $cc[] = $admin;
+    return array_values(array_unique($cc));
+}
+
+function getMainAssigneeEmail(array $customFields, string $assignToFallback, ?string $creatorUsername = null): ?string
+{
+    $assignment = resolveAssignmentRecipients($customFields, $assignToFallback, $creatorUsername);
+
+    return $assignment['to'];
+}
+
+function isMainAssigneeForEmail(
+    array $customFields,
+    string $assignToFallback,
+    string $email,
+    ?string $creatorUsername = null
+): bool {
+    $main = getMainAssigneeEmail($customFields, $assignToFallback, $creatorUsername);
+    if ($main === null) {
+        return false;
     }
 
-    return array_values(array_unique($cc));
+    return strcasecmp($main, trim($email)) === 0;
 }
 
 function formatAssignToDisplay(array $customFields, string $fallback = ''): string
@@ -354,7 +370,7 @@ function buildTimelineEmailBody(
 
     $lines[] = '';
     $lines[] = 'ACTIONS';
-    $lines[] = '  Mark as completed: ' . $completeUrl;
+    $lines[] = '  Update status (Completed or Hold): ' . $completeUrl;
     $lines[] = '';
     $lines[] = '—';
     $lines[] = 'Project Timeline Tracker';
@@ -362,30 +378,168 @@ function buildTimelineEmailBody(
     return implode("\n", $lines);
 }
 
-function sendMailMessage(string $to, string $subject, string $body, array $cc = []): bool
+function getMailTransportError(): string
 {
-    $mailConfig = getMailConfig();
-    $fromEmail = $mailConfig['from_email'];
-    $fromName = $mailConfig['from_name'];
+    return $GLOBALS['mailTransportError'] ?? '';
+}
 
-    $encodedSubject = '=?UTF-8?B?' . base64_encode($subject) . '?=';
-    $headers = [
-        'MIME-Version: 1.0',
-        'Content-Type: text/plain; charset=UTF-8',
-        'Content-Transfer-Encoding: 8bit',
-        'From: ' . sprintf('"%s" <%s>', addslashes($fromName), $fromEmail),
-        'Reply-To: ' . $fromEmail,
-        'X-Mailer: PHP/' . PHP_VERSION,
-    ];
+function setMailTransportError(string $message): void
+{
+    $clean = trim(preg_replace('/\s+/', ' ', $message) ?? $message);
+    if (strlen($clean) > 300) {
+        $clean = substr($clean, 0, 300);
+    }
+    $GLOBALS['mailTransportError'] = $clean;
+}
 
-    if ($cc !== []) {
-        $ccHeader = formatMailAddressList($cc);
-        if ($ccHeader !== '') {
-            $headers[] = 'Cc: ' . $ccHeader;
+function smtpRead($socket): string
+{
+    $data = '';
+    while (($line = fgets($socket, 515)) !== false) {
+        $data .= $line;
+        if (isset($line[3]) && $line[3] === ' ') {
+            break;
         }
     }
 
-    return @mail($to, $encodedSubject, $body, implode("\r\n", $headers));
+    return $data;
+}
+
+function smtpCommand($socket, string $command, array $okCodes): bool
+{
+    $written = 0;
+    $length = strlen($command) + 2;
+    $payload = $command . "\r\n";
+    while ($written < $length) {
+        $sent = fwrite($socket, substr($payload, $written));
+        if ($sent === false) {
+            setMailTransportError('Could not write to the mail server');
+            return false;
+        }
+        $written += $sent;
+    }
+
+    $response = smtpRead($socket);
+    $code = (int) substr($response, 0, 3);
+    if (!in_array($code, $okCodes, true)) {
+        setMailTransportError($response !== '' ? $response : 'Mail server closed the connection');
+        return false;
+    }
+
+    return true;
+}
+
+function sendMailViaSmtp(
+    string $to,
+    string $subject,
+    string $body,
+    array $cc,
+    string $fromEmail,
+    string $fromName,
+    string $host,
+    int $port,
+    string $username,
+    string $password
+): bool {
+    $remote = 'ssl://' . $host . ':' . $port;
+    $socket = @stream_socket_client($remote, $errno, $errstr, 20);
+    if ($socket === false) {
+        setMailTransportError('Cannot connect to ' . $host . ':' . $port . ' ' . $errstr . ' (' . $errno . ')');
+        return false;
+    }
+
+    stream_set_timeout($socket, 20);
+    $greeting = smtpRead($socket);
+    if ((int) substr($greeting, 0, 3) !== 220) {
+        setMailTransportError($greeting !== '' ? $greeting : 'Mail server sent no greeting');
+        fclose($socket);
+        return false;
+    }
+
+    $ehloHost = 'dash-bot.net';
+    if (!smtpCommand($socket, 'EHLO ' . $ehloHost, [250])) {
+        fclose($socket);
+        return false;
+    }
+
+    if (
+        !smtpCommand($socket, 'AUTH LOGIN', [334])
+        || !smtpCommand($socket, base64_encode($username), [334])
+        || !smtpCommand($socket, base64_encode($password), [235])
+    ) {
+        fclose($socket);
+        return false;
+    }
+
+    if (!smtpCommand($socket, 'MAIL FROM:<' . $fromEmail . '>', [250])) {
+        fclose($socket);
+        return false;
+    }
+
+    $recipients = array_merge([$to], $cc);
+    foreach ($recipients as $recipient) {
+        if (!smtpCommand($socket, 'RCPT TO:<' . $recipient . '>', [250, 251])) {
+            fclose($socket);
+            return false;
+        }
+    }
+
+    if (!smtpCommand($socket, 'DATA', [354])) {
+        fclose($socket);
+        return false;
+    }
+
+    $fromHeader = $fromName !== '' ? $fromName . ' <' . $fromEmail . '>' : $fromEmail;
+    $encodedSubject = '=?UTF-8?B?' . base64_encode($subject) . '?=';
+    $lines = [
+        'Date: ' . date(DATE_RFC2822),
+        'From: ' . $fromHeader,
+        'To: ' . $to,
+        'Subject: ' . $encodedSubject,
+        'MIME-Version: 1.0',
+        'Content-Type: text/plain; charset=UTF-8',
+        'Content-Transfer-Encoding: 8bit',
+        'Reply-To: ' . $fromEmail,
+    ];
+    if ($cc !== []) {
+        $lines[] = 'Cc: ' . implode(', ', $cc);
+    }
+    $lines[] = '';
+    $payload = implode("\r\n", $lines) . "\r\n" . str_replace("\n", "\r\n", str_replace("\r\n", "\n", $body));
+    $payload = preg_replace('/^\./m', '..', $payload) ?? $payload;
+
+    $accepted = smtpCommand($socket, $payload . "\r\n.", [250]);
+    $mailError = getMailTransportError();
+    fwrite($socket, "QUIT\r\n");
+    if (!$accepted) {
+        setMailTransportError($mailError);
+    }
+    fclose($socket);
+
+    return $accepted;
+}
+
+function sendMailMessage(string $to, string $subject, string $body, array $cc = []): bool
+{
+    $mailConfig = getMailConfig();
+    $fromEmail = trim((string) $mailConfig['from_email']);
+    $fromName = trim((string) $mailConfig['from_name']);
+    $password = trim((string) ($mailConfig['smtp_password'] ?? ''));
+
+    if ($fromEmail === '' || filter_var($fromEmail, FILTER_VALIDATE_EMAIL) === false || $password === '') {
+        setMailTransportError('Mail is not configured');
+        return false;
+    }
+
+    $host = trim((string) ($mailConfig['smtp_host'] ?? 'smtp.hostinger.com'));
+    $port = (int) ($mailConfig['smtp_port'] ?? 465);
+    $username = trim((string) ($mailConfig['smtp_username'] ?? $fromEmail));
+    if ($host === '' || $port <= 0 || $username === '') {
+        setMailTransportError('Mail server settings are incomplete');
+        return false;
+    }
+
+    return sendMailViaSmtp($to, $subject, $body, $cc, $fromEmail, $fromName, $host, $port, $username, $password);
 }
 
 function sendMailToAssignmentGroup(
@@ -445,12 +599,6 @@ function sendTimelineEmailWithAssignment(
     if (!($mailConfig['enabled'] ?? true)) {
         $assignment = resolveAssignmentRecipients($customFields, $assignToFallback, $creatorUsername);
         $result['skipped'] = ($assignment['to'] !== null ? 1 : 0) + count($assignment['cc']);
-        if ($assignment['to'] !== null) {
-            $admin = getAdminEmail();
-            if (strtolower($assignment['to']) !== $admin && !in_array($admin, $assignment['cc'], true)) {
-                $result['skipped']++;
-            }
-        }
 
         return $result;
     }
@@ -460,7 +608,7 @@ function sendTimelineEmailWithAssignment(
         return $result;
     }
 
-    $cc = appendAdminCc($assignment['cc'], $assignment['to']);
+    $cc = normalizeEmailCcList($assignment['cc']);
 
     $subject = buildEmailSubject($project, $timelineType, $subjectSuffix ?? '');
     $body = buildTimelineEmailBody(
@@ -508,54 +656,13 @@ function sendProgrammingQuestionnaireNotification(
 
     $to = 'qazimudassir@outlook.com';
     $cc = ['insighta1@outlook.com', 'projects@ae-research.com'];
-    $tabHeading = getTimelineTabHeading('programming');
+    $surveyName = trim((string) ($project['title'] ?? 'Survey'));
 
-    $subject = buildEmailSubject($project, 'programming', 'New Survey — Questionnaire Required');
+    $subject = 'Questionnaire Required - ' . $surveyName;
 
-    $lines = [
-        'Hello,',
-        '',
-        'A new Programming timeline ticket (survey) has been created in Project Timeline Tracker.',
-        '',
-        'ACTION REQUIRED',
-        '  A new survey has been registered. Please ask the AER team to share the',
-        '  questionnaire for this survey with the Bangalore team.',
-        '',
-        'PROJECT',
-        '  Title: ' . ($project['title'] ?? 'Untitled'),
-        '  Project ID: ' . ($project['project_id'] ?? '—'),
-        '',
-        'TIMELINE',
-        '  Tab: ' . $tabHeading,
-        '  Ticket ID: ' . $itemId,
-        '',
-        'ASSIGNED TO',
-        '  ' . ($assignTo !== '' ? $assignTo : '—'),
-        '',
-        'STATUS',
-        '  ' . formatStatusLabel($status),
-        '',
-        'SCHEDULE',
-        ...formatTimelineScheduleLines($startDate, $dueDate, $customFields),
-    ];
-
-    $lines[] = '';
-    $lines[] = 'DESCRIPTION';
-    $lines[] = '  ' . (trim($description) !== '' ? trim($description) : 'None');
-
-    if ($createdByUsername !== null && trim($createdByUsername) !== '') {
-        $lines[] = '';
-        $lines[] = 'CREATED BY';
-        $lines[] = '  ' . trim($createdByUsername);
-    }
-
-    $lines[] = '';
-    $lines[] = 'Please coordinate with the AER team so the Bangalore team receives the questionnaire promptly.';
-    $lines[] = '';
-    $lines[] = '—';
-    $lines[] = 'Project Timeline Tracker';
-
-    $body = implode("\n", $lines);
+    $body = "ACTION REQUIRED\n"
+        . "  A new survey has been registered. Please ask the AER team to share the\n"
+        . "  questionnaire for this survey with the Bangalore team.";
 
     if (sendMailMessage($to, $subject, $body, $cc)) {
         $result['sent'] = 1;
@@ -672,8 +779,13 @@ function sendTimelineStatusChangeNotification(
     array $project,
     array $item,
     string $previousStatus,
-    string $newStatus
+    string $newStatus,
+    string $source = 'app'
 ): bool {
+    if ($previousStatus === $newStatus) {
+        return false;
+    }
+
     $mailConfig = getMailConfig();
 
     if (!($mailConfig['enabled'] ?? true)) {
@@ -685,13 +797,17 @@ function sendTimelineStatusChangeNotification(
     $subject = buildEmailSubject(
         $project,
         $timelineType,
-        'Status Updated to ' . formatStatusLabel($newStatus) . ' (email link)'
+        'Status: ' . formatStatusLabel($previousStatus) . ' → ' . formatStatusLabel($newStatus)
     );
 
-    $alertMessage = 'A timeline task was marked as completed using the email completion link. Status changed from '
+    $sourceLabel = $source === 'email_link' ? 'email link' : 'the app';
+
+    $alertMessage = 'Timeline task status changed from '
         . formatStatusLabel($previousStatus)
         . ' to '
         . formatStatusLabel($newStatus)
+        . ' via '
+        . $sourceLabel
         . '.';
 
     $body = buildTimelineAdminAlertEmailBody($project, $item, $alertMessage);
@@ -741,6 +857,11 @@ textarea.field:focus{border-color:#818cf8;box-shadow:0 0 0 4px rgba(99,102,241,.
 .btn:active{transform:scale(.98)}
 .btn-success{background:linear-gradient(135deg,#059669,#10b981);color:#fff;box-shadow:0 4px 14px rgba(5,150,105,.35)}
 .btn-success:hover{box-shadow:0 6px 20px rgba(5,150,105,.45)}
+.btn-hold{background:linear-gradient(135deg,#6d28d9,#7c3aed);color:#fff;box-shadow:0 4px 14px rgba(109,40,217,.35)}
+.btn-hold:hover{box-shadow:0 6px 20px rgba(109,40,217,.45)}
+.action-row{display:grid;gap:12px;margin-top:20px}
+@media(min-width:480px){.action-row{grid-template-columns:1fr 1fr}}
+.status-icon.hold{background:#ede9fe;color:#6d28d9}
 .status-icon{width:64px;height:64px;border-radius:50%;display:flex;align-items:center;justify-content:center;margin:0 auto 20px;font-size:28px}
 .status-icon.success{background:#d1fae5;color:#059669}
 .status-icon.error{background:#fee2e2;color:#dc2626}
@@ -817,17 +938,23 @@ function renderCompleteFormPage(array $item, string $token): void
         . '<div class="desc-box">' . nl2br($descEsc) . '</div></div>'
         . '<form method="post" action="">'
         . '<input type="hidden" name="token" value="' . $tokenEsc . '">'
-        . '<label class="field-label" for="comment">Add a completion comment (optional)</label>'
-        . '<textarea id="comment" name="comment" class="field" placeholder="Share any notes about completing this task..."></textarea>'
-        . '<div style="margin-top:20px"><button type="submit" class="btn btn-success">'
+        . '<label class="field-label" for="comment">Add a comment (optional)</label>'
+        . '<textarea id="comment" name="comment" class="field" placeholder="Share any notes about this task..."></textarea>'
+        . '<div class="action-row">'
+        . '<button type="submit" name="action" value="completed" class="btn btn-success">'
         . '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">'
         . '<path d="M5 13l4 4L19 7"/></svg>'
-        . ' Mark as Completed</button></div></form>';
+        . ' Mark as Completed</button>'
+        . '<button type="submit" name="action" value="hold" class="btn btn-hold">'
+        . '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">'
+        . '<path d="M10 9v6m4-6v6M5 5h14a2 2 0 012 2v10a2 2 0 01-2 2H5a2 2 0 01-2-2V7a2 2 0 012-2z"/></svg>'
+        . ' Mark as Hold</button>'
+        . '</div></form>';
 
     renderCompletePageShell(
-        'Mark Task Completed',
-        'Complete this task',
-        'Review the details below, then confirm completion',
+        'Update Task Status',
+        'Update this task',
+        'Choose Completed or Hold after reviewing the details below',
         $body
     );
 }
@@ -838,11 +965,20 @@ function renderCompletePage(bool $success, string $message, ?array $item = null,
     header('Content-Type: text/html; charset=utf-8');
 
     if ($success) {
-        $icon = '<div class="status-icon success">✓</div>';
-        $title = 'Task Completed';
-        $heroTitle = 'All done!';
-        $heroSubtitle = 'The timeline task has been updated';
-        $titleColor = '#059669';
+        $isHold = ($item['status'] ?? '') === 'hold';
+        if ($isHold) {
+            $icon = '<div class="status-icon hold">⏸</div>';
+            $title = 'Task On Hold';
+            $heroTitle = 'On hold';
+            $heroSubtitle = 'Reminders are paused until status changes';
+            $titleColor = '#6d28d9';
+        } else {
+            $icon = '<div class="status-icon success">✓</div>';
+            $title = 'Task Completed';
+            $heroTitle = 'All done!';
+            $heroSubtitle = 'The timeline task has been updated';
+            $titleColor = '#059669';
+        }
     } elseif ($item !== null && ($item['status'] ?? '') === 'completed') {
         $icon = '<div class="status-icon info">✓</div>';
         $title = 'Already Completed';
@@ -883,7 +1019,7 @@ function renderCompletePage(bool $success, string $message, ?array $item = null,
 
         if ($addedComment !== null && trim($addedComment) !== '') {
             $body .= '<div style="margin-top:12px;padding:12px 16px;background:#ecfdf5;border:1px solid #a7f3d0;border-radius:12px;font-size:13px;color:#047857">'
-                . '✓ Your completion comment was saved.</div>';
+                . '✓ Your comment was saved.</div>';
         }
 
         $body .= '</div>';
@@ -924,10 +1060,6 @@ function handleTimelineCompleteRoute(): void
         renderCompletePage(true, 'This task is already marked as completed.', $item);
     }
 
-    if (($item['status'] ?? '') === 'hold') {
-        renderCompletePage(false, 'This task is on hold. Reminders and completion are paused until the status is changed.', $item);
-    }
-
     if ($method === 'GET') {
         renderCompleteFormPage($item, $token);
     }
@@ -936,13 +1068,19 @@ function handleTimelineCompleteRoute(): void
         renderCompletePage(false, 'Invalid request method.');
     }
 
+    $action = (string) ($_POST['action'] ?? 'completed');
+    if (!in_array($action, ['completed', 'hold'], true)) {
+        renderCompletePage(false, 'Please choose Completed or Hold.', $item);
+    }
+
     $comment = (string) ($_POST['comment'] ?? '');
     $previousStatus = (string) ($item['status'] ?? 'pending');
+    $newStatus = $action === 'hold' ? 'hold' : 'completed';
     $newDescription = appendCompletionCommentToDescription($item['description'] ?? null, $comment);
 
     $update = $db->prepare('UPDATE timeline_items SET status = ?, description = ? WHERE id = ?');
-    $update->execute(['completed', $newDescription, $itemId]);
-    $item['status'] = 'completed';
+    $update->execute([$newStatus, $newDescription, $itemId]);
+    $item['status'] = $newStatus;
     $item['description'] = $newDescription;
 
     $project = [
@@ -950,7 +1088,11 @@ function handleTimelineCompleteRoute(): void
         'project_id' => $item['project_code'],
         'title' => $item['project_title'],
     ];
-    sendTimelineStatusChangeNotification($project, $item, $previousStatus, 'completed');
+    sendTimelineStatusChangeNotification($project, $item, $previousStatus, $newStatus, 'email_link');
+
+    if ($newStatus === 'hold') {
+        renderCompletePage(true, 'The timeline task has been marked as hold.', $item, $comment);
+    }
 
     renderCompletePage(true, 'The timeline task has been marked as completed.', $item, $comment);
 }

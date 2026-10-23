@@ -8,7 +8,42 @@ Format: `YYYY-MM-DD` — short title, then bullet points.
 
 ---
 
+## 2026-10-23
+
+### Documentation covers the current app
+- **DOCUMENTATION.md** now includes device notifications, Quick tickets, the automatic Tabs Syntax ticket, 15-minute idle refresh, mobile/PWA layout, the Hostinger SMTP mailbox, and a full behavior index.
+- Login tokens are documented as never expiring. Quick tickets are documented as email-free. The reminder cron is documented as skipping `timeline_type = quick`.
+- Deploy notes warn that `prepare-hostinger-upload.bat` replaces `config.local.php`.
+
+---
+
+## 2026-08-05
+
+### Complete documentation rewrite
+- **DOCUMENTATION.md** expanded to full reference: architecture, auth (main + employee), all pages/components, API endpoints, database, emails, reminders, cron, deployment, security, troubleshooting, file map.
+- **README.md** and **SETUP-STEPS.md** updated for current auth model and PPT tab.
+
+---
+
 ## 2026-06-21
+
+### Programming — questionnaire email
+- Subject: `Questionnaire Required - {Survey name}` only.
+- Body: **ACTION REQUIRED** text only (no project/timeline details).
+
+### Reminders — schedule edit behavior
+- Editing timeline dates/times or reminder settings no longer re-sends past % reminders.
+- Only **remaining** (future) reminder thresholds are sent after a schedule change.
+
+### Email — admin on status change only
+- Avinash/admin is **no longer CC'd** on assignment, reminder, or overdue emails.
+- Admin is notified **only when ticket status changes** (app or email link).
+
+### Completion link — Completed or Hold
+- Email status link page offers **Mark as Completed** and **Mark as Hold**.
+
+### Report — Hold filter
+- **Hold** status chip added to report filters.
 
 ### Email — subject line order
 - All timeline emails: **Tab title · Survey name · Project ID** (then optional suffix e.g. reminder type).

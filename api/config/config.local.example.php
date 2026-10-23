@@ -8,7 +8,7 @@ return [
     'host' => 'localhost',
     'database' => 'u511101901_project_manage',
     'username' => 'u511101901_project_manage',
-    'password' => 'Project_manage!11@11#11',              // XAMPP/WAMP default is empty
+    'password' => '',              // XAMPP/WAMP default is empty
     'charset' => 'utf8mb4',
 
     'base_path' => '',             // empty for local

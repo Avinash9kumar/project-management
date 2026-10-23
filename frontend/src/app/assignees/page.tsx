@@ -1,18 +1,19 @@
 'use client';
 
-import AuthGuard from '@/components/AuthGuard';
+import MainAuthGuard from '@/components/MainAuthGuard';
 import AssigneeManager from '@/components/AssigneeManager';
 
 export default function AssigneesPage() {
   return (
-    <AuthGuard>
+    <MainAuthGuard>
       <div className="page-enter space-y-6">
         <div>
+          <p className="page-kicker">People</p>
           <h1 className="page-title">Team assignees</h1>
         </div>
 
         <AssigneeManager variant="page" />
       </div>
-    </AuthGuard>
+    </MainAuthGuard>
   );
 }

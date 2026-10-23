@@ -13,6 +13,7 @@ export default function AssigneeManager({ variant = 'panel' }: Props) {
   const [adding, setAdding] = useState(false);
   const [addError, setAddError] = useState('');
   const [deletingId, setDeletingId] = useState<number | null>(null);
+  const [copiedId, setCopiedId] = useState<number | null>(null);
   const [expanded, setExpanded] = useState(true);
 
   const isPage = variant === 'page';
@@ -49,6 +50,18 @@ export default function AssigneeManager({ variant = 'panel' }: Props) {
     }
   };
 
+  const handleCopyLink = async (id: number, url?: string) => {
+    if (!url) return;
+
+    try {
+      await navigator.clipboard.writeText(url);
+      setCopiedId(id);
+      window.setTimeout(() => setCopiedId((current) => (current === id ? null : current)), 2000);
+    } catch {
+      setAddError('Could not copy link. Copy it manually from the browser address bar after opening.');
+    }
+  };
+
   const content = (
     <div className={isPage ? 'card p-4 sm:p-5' : 'border-t border-slate-100 px-4 pb-4 pt-3 sm:px-5'}>
       {error && (
@@ -59,6 +72,11 @@ export default function AssigneeManager({ variant = 'panel' }: Props) {
           </button>
         </div>
       )}
+
+      <p className="mb-3 text-xs text-slate-500">
+        Team emails for assignment. Copy each employee&apos;s personal link — they sign in with their
+        assignee username and password (e.g. mansiha / mansiha@11#11) to view their own read-only report.
+      </p>
 
       <form onSubmit={handleAdd} className="mb-4 flex flex-col gap-2 sm:flex-row">
         <input
@@ -84,34 +102,53 @@ export default function AssigneeManager({ variant = 'panel' }: Props) {
           ))}
         </div>
       ) : (
-        <div className="overflow-hidden rounded-xl border border-slate-200">
-          <div className="grid grid-cols-[1fr_auto] gap-2 border-b border-slate-100 bg-slate-50 px-3 py-2 text-xs font-semibold uppercase tracking-wide text-slate-500">
-            <span>Email</span>
-            <span className="w-16 text-center">Action</span>
-          </div>
-          <ul className="divide-y divide-slate-100">
-            {assignees.map((assignee) => (
-              <li
-                key={`${assignee.id}-${assignee.value}`}
-                className="grid grid-cols-[1fr_auto] items-center gap-2 px-3 py-2.5 hover:bg-slate-50/80"
-              >
-                <span className="truncate text-sm text-slate-800">{assignee.value}</span>
-                {assignee.id > 0 ? (
-                  <button
-                    type="button"
-                    title="Remove assignee"
-                    disabled={deletingId === assignee.id}
-                    onClick={() => handleDelete(assignee.id, assignee.value)}
-                    className="flex h-8 w-16 items-center justify-center rounded-lg text-xs font-medium text-red-600 transition hover:bg-red-50 disabled:opacity-50"
-                  >
-                    {deletingId === assignee.id ? '...' : 'Delete'}
-                  </button>
-                ) : (
-                  <span className="w-16 text-center text-[10px] text-slate-400">Default</span>
-                )}
-              </li>
-            ))}
-          </ul>
+        <div className="overflow-x-auto rounded-xl border border-slate-200">
+          <table className="w-full min-w-[520px] text-sm">
+            <thead>
+              <tr className="border-b border-slate-100 bg-slate-50 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">
+                <th className="px-3 py-2">Email</th>
+                <th className="px-3 py-2">Personal link</th>
+                <th className="w-20 px-3 py-2 text-center">Action</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-100">
+              {assignees.map((assignee) => (
+                <tr key={`${assignee.id}-${assignee.value}`} className="hover:bg-slate-50/80">
+                  <td className="px-3 py-2.5">
+                    <span className="truncate text-slate-800">{assignee.value}</span>
+                  </td>
+                  <td className="px-3 py-2.5">
+                    {assignee.report_url ? (
+                      <button
+                        type="button"
+                        onClick={() => handleCopyLink(assignee.id, assignee.report_url)}
+                        className="rounded-lg border border-indigo-200 bg-indigo-50 px-2.5 py-1 text-xs font-semibold text-indigo-700 transition hover:bg-indigo-100"
+                      >
+                        {copiedId === assignee.id ? 'Copied' : 'Copy link'}
+                      </button>
+                    ) : (
+                      <span className="text-[10px] text-slate-400">—</span>
+                    )}
+                  </td>
+                  <td className="px-3 py-2.5 text-center">
+                    {assignee.id > 0 ? (
+                      <button
+                        type="button"
+                        title="Remove assignee"
+                        disabled={deletingId === assignee.id}
+                        onClick={() => handleDelete(assignee.id, assignee.value)}
+                        className="rounded-lg px-2 py-1 text-xs font-medium text-red-600 transition hover:bg-red-50 disabled:opacity-50"
+                      >
+                        {deletingId === assignee.id ? '...' : 'Delete'}
+                      </button>
+                    ) : (
+                      <span className="text-[10px] text-slate-400">Default</span>
+                    )}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
         </div>
       )}
     </div>
@@ -136,9 +173,7 @@ export default function AssigneeManager({ variant = 'panel' }: Props) {
           </div>
           <div>
             <p className="text-sm font-bold text-slate-800">Team assignees</p>
-            <p className="text-xs text-slate-500">
-              Add or remove emails used in timeline Main assign &amp; CC
-            </p>
+            <p className="text-xs text-slate-500">Emails for timeline assignment</p>
           </div>
         </div>
         <div className="flex items-center gap-2">

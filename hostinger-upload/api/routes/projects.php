@@ -10,7 +10,7 @@ function handleProjectsRoute(array $segments): void
     // GET /projects
     if (count($segments) === 1 && $method === 'GET') {
         $stmt = $db->query(
-            'SELECT id, project_id, title, end_date, created_at, updated_at FROM projects ORDER BY created_at DESC'
+            "SELECT id, project_id, title, end_date, created_at, updated_at FROM projects WHERE project_id <> 'QUICK' ORDER BY created_at DESC"
         );
         jsonResponse(['projects' => $stmt->fetchAll()]);
     }
@@ -41,6 +41,20 @@ function handleProjectsRoute(array $segments): void
         );
         $stmt->execute([$projectId, $title, $endDate]);
         $id = (int) $db->lastInsertId();
+
+        if (is_string($endDate) && $endDate !== '') {
+            try {
+                $authUser = getAuthUser();
+                ensureTabsSyntaxFromProjectEnd(
+                    $db,
+                    ['id' => $id, 'project_id' => $projectId, 'title' => $title],
+                    $endDate,
+                    $authUser['username'] ?? null
+                );
+            } catch (Throwable $e) {
+                // Project is saved even if the Tabs Syntax ticket cannot be created.
+            }
+        }
 
         jsonResponse([
             'project' => [
@@ -119,6 +133,21 @@ function handleProjectsRoute(array $segments): void
 
             $update = $db->prepare('UPDATE projects SET title = ?, end_date = ? WHERE id = ?');
             $update->execute([$title, $endDate, $id]);
+
+            $previousEnd = $existing['end_date'] ?? null;
+            if (is_string($endDate) && $endDate !== '' && $endDate !== $previousEnd) {
+                try {
+                    $authUser = getAuthUser();
+                    ensureTabsSyntaxFromProjectEnd(
+                        $db,
+                        ['id' => $id, 'project_id' => $existing['project_id'], 'title' => $title],
+                        $endDate,
+                        $authUser['username'] ?? null
+                    );
+                } catch (Throwable $e) {
+                    // Project is saved even if the Tabs Syntax ticket cannot be updated.
+                }
+            }
 
             jsonResponse([
                 'project' => [

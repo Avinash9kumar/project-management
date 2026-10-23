@@ -70,7 +70,13 @@ function fetchAssignees(PDO $db): array
          ORDER BY sort_order ASC, value ASC'
     );
 
-    return $stmt->fetchAll();
+    $rows = $stmt->fetchAll();
+    foreach ($rows as &$row) {
+        $row['report_url'] = buildEmployeeReportUrl((string) $row['value']);
+    }
+    unset($row);
+
+    return $rows;
 }
 
 function handleAssigneesRoute(array $segments): void
@@ -110,6 +116,7 @@ function handleAssigneesRoute(array $segments): void
                 'id' => (int) $db->lastInsertId(),
                 'value' => strtolower($value),
                 'sort_order' => $sortOrder,
+                'report_url' => buildEmployeeReportUrl(strtolower($value)),
             ],
         ], 201);
     }

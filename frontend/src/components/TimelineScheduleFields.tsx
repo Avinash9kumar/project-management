@@ -216,21 +216,23 @@ export default function TimelineScheduleFields({
 
       {mode === 'date' ? (
         <div className="space-y-1.5">
-          <div className="grid grid-cols-2 gap-2">
-            <div>
+          <div className="grid grid-cols-1 gap-2 min-[380px]:grid-cols-2">
+            <div className="min-w-0">
               <label className="mb-0.5 block text-xs text-slate-600">Start date *</label>
               <input
                 type="date"
-                className="input-field h-8 text-sm"
+                data-field="start-date"
+                className="input-field h-11 w-full min-w-0"
                 value={startDate}
                 onChange={(e) => onStartDateChange(e.target.value)}
               />
             </div>
-            <div>
+            <div className="min-w-0">
               <label className="mb-0.5 block text-xs text-slate-600">End date *</label>
               <input
                 type="date"
-                className="input-field h-8 text-sm"
+                data-field="end-date"
+                className="input-field h-11 w-full min-w-0"
                 value={endDate}
                 min={startDate || undefined}
                 onChange={(e) => onEndDateChange(e.target.value)}
@@ -249,7 +251,7 @@ export default function TimelineScheduleFields({
                     title={opt.short}
                     aria-pressed={on}
                     onClick={() => onEndDateSlotChange(opt.value)}
-                    className={`rounded px-2 py-1 text-[10px] font-semibold leading-none transition ${
+                    className={`min-h-9 rounded-lg px-2.5 py-1.5 text-xs font-semibold leading-none transition ${
                       on
                         ? 'bg-blue-600 text-white'
                         : 'bg-white text-slate-600 ring-1 ring-slate-200 hover:ring-blue-300'
@@ -268,7 +270,8 @@ export default function TimelineScheduleFields({
             <label className="mb-0.5 block text-xs text-slate-600">Day *</label>
             <input
               type="date"
-              className="input-field h-8 text-sm"
+              data-field="start-date"
+              className="input-field h-11 w-full min-w-0"
               value={activeDay}
               onChange={(e) => onStartDateChange(e.target.value)}
             />
@@ -277,11 +280,13 @@ export default function TimelineScheduleFields({
           <div className="grid grid-cols-2 gap-2">
             <div className="min-w-0">
               <label className="mb-0.5 block text-xs text-slate-600">Start time *</label>
-              <StartTimeDropdown
-                value={activeStartTime}
-                options={timeOptions}
-                onChange={onStartTimeChange}
-              />
+              <div data-field="start-time">
+                <StartTimeDropdown
+                  value={activeStartTime}
+                  options={timeOptions}
+                  onChange={onStartTimeChange}
+                />
+              </div>
             </div>
             <div className="min-w-0">
               <label className="mb-0.5 block text-xs text-slate-600">End *</label>

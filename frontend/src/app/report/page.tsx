@@ -3,6 +3,7 @@
 import { useEffect, useState, useMemo, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { getTimelineReport, updateTimelineItem, deleteTimelineItem } from '@/lib/api';
+import QuickTicketModal from '@/components/QuickTicketModal';
 import {
   TimelineReportItem,
   TimelineItem,
@@ -14,9 +15,14 @@ import {
   ProjectStatus,
 } from '@/lib/types';
 import { formatTimelineRange, formatTimeRemaining, remainingUrgencyClass } from '@/lib/timeline-utils';
-import AuthGuard from '@/components/AuthGuard';
+import MainAuthGuard from '@/components/MainAuthGuard';
+import { useIdleRefresh } from '@/lib/useIdleRefresh';
 import ReportTimelineEditModal from '@/components/ReportTimelineEditModal';
-import ReportFilters, { ReportStatusFilter, TimelineTabFilter } from '@/components/ReportFilters';
+import ReportFilters, {
+  ReportStatusFilter,
+  TimelineTabFilter,
+  DEFAULT_REPORT_STATUS_FILTER,
+} from '@/components/ReportFilters';
 
 function matchesTimelineTabFilter(item: TimelineReportItem, filter: TimelineTabFilter): boolean {
   if (filter === 'all') return true;
@@ -32,25 +38,29 @@ function isReportItemOverdue(item: TimelineReportItem): boolean {
   );
 }
 
-function isReportItemActive(item: TimelineReportItem): boolean {
-  return item.status !== 'completed';
-}
-
 function isReportInProgressStatus(status: ProjectStatus): boolean {
   return status === 'pending' || status === 'in_progress';
 }
 
-function reportStatusLabel(status: ProjectStatus): string {
+function reportTabLabel(type: string): string {
+  if (String(type) === 'quick') return 'Quick';
+  return TIMELINE_TAB_LABELS[type as TimelineType] || type;
+}
+
+function reportStatusLabel(status: ProjectStatus | string): string {
   if (status === 'pending') return STATUS_LABELS.in_progress;
-  return STATUS_LABELS[status];
+  if (status in STATUS_LABELS) return STATUS_LABELS[status as ProjectStatus];
+  return status ? String(status) : '—';
 }
 
 function matchesReportStatusFilter(item: TimelineReportItem, filter: ReportStatusFilter): boolean {
   switch (filter) {
     case 'all':
-      return isReportItemActive(item);
+      return true;
     case 'in_progress':
       return isReportInProgressStatus(item.status);
+    case 'hold':
+      return item.status === 'hold';
     case 'completed':
       return item.status === 'completed';
     case 'overdue':
@@ -58,6 +68,42 @@ function matchesReportStatusFilter(item: TimelineReportItem, filter: ReportStatu
     default:
       return true;
   }
+}
+
+function getReportAllSortRank(item: TimelineReportItem): number {
+  if (isReportItemOverdue(item)) return 0;
+  if (isReportInProgressStatus(item.status)) return 1;
+  if (item.status === 'hold') return 2;
+  if (item.status === 'completed') return 3;
+  return 4;
+}
+
+function compareRemainingSeconds(
+  a: number | null,
+  b: number | null
+): number {
+  if (a === null && b === null) return 0;
+  if (a === null) return 1;
+  if (b === null) return -1;
+  return a - b;
+}
+
+function sortReportItemsForAllFilter(items: TimelineReportItem[]): TimelineReportItem[] {
+  return [...items].sort((a, b) => {
+    const rankDiff = getReportAllSortRank(a) - getReportAllSortRank(b);
+    if (rankDiff !== 0) return rankDiff;
+
+    const rank = getReportAllSortRank(a);
+    if (rank === 0 || rank === 1) {
+      const byRemaining = compareRemainingSeconds(a.remaining_seconds, b.remaining_seconds);
+      if (byRemaining !== 0) return byRemaining;
+    }
+
+    const byTitle = a.project_title.localeCompare(b.project_title);
+    if (byTitle !== 0) return byTitle;
+
+    return a.id - b.id;
+  });
 }
 
 function statusBadgeClass(status: ProjectStatus) {
@@ -85,19 +131,32 @@ function ActionButtons({
     <div className="flex shrink-0 gap-1" onClick={(e) => e.stopPropagation()}>
       <button
         type="button"
-        className="btn-ghost px-2 py-1 text-xs text-indigo-600 hover:bg-indigo-50"
+        className="btn-ghost min-h-10 px-3 py-2 text-xs text-indigo-600 hover:bg-indigo-50"
         onClick={onEdit}
       >
         Edit
       </button>
       <button
         type="button"
-        className="btn-ghost px-2 py-1 text-xs text-rose-600 hover:bg-rose-50"
+        className="btn-ghost min-h-10 px-3 py-2 text-xs text-rose-600 hover:bg-rose-50"
         onClick={onDelete}
       >
         Delete
       </button>
     </div>
+  );
+}
+
+function reportDescription(item: TimelineReportItem): string | null {
+  const text = item.description?.trim();
+  return text || null;
+}
+
+function ReportDescription({ text }: { text: string }) {
+  return (
+    <p className="mt-1 max-w-md text-sm leading-snug text-slate-600 line-clamp-3 whitespace-pre-wrap">
+      {text}
+    </p>
   );
 }
 
@@ -116,9 +175,8 @@ function ReportRow({
 }) {
   const remainingMs =
     item.remaining_seconds !== null ? item.remaining_seconds * 1000 : null;
-  const tabLabel =
-    TIMELINE_TAB_LABELS[item.timeline_type as TimelineType] ||
-    item.timeline_type;
+  const tabLabel = reportTabLabel(item.timeline_type);
+  const description = reportDescription(item);
 
   return (
     <tr className="transition hover:bg-indigo-50/40">
@@ -144,9 +202,12 @@ function ReportRow({
       </td>
       <td className="table-cell cursor-pointer text-sm text-slate-700" onClick={onOpen}>
         {item.assign_to || '—'}
+        {description && <ReportDescription text={description} />}
       </td>
-      <td className="table-cell cursor-pointer" onClick={onOpen}>
-        <span className={statusBadgeClass(item.status)}>{reportStatusLabel(item.status)}</span>
+      <td className="table-cell min-w-[7.25rem] cursor-pointer whitespace-nowrap" onClick={onOpen}>
+        <span className={`${statusBadgeClass(item.status)} whitespace-nowrap`}>
+          {reportStatusLabel(item.status)}
+        </span>
       </td>
       <td className="table-cell cursor-pointer text-xs text-slate-500" onClick={onOpen}>
         {formatTimelineRange({ ...item, sort_order: 0 } as TimelineItem)}
@@ -173,13 +234,12 @@ function ReportCard({
 }) {
   const remainingMs =
     item.remaining_seconds !== null ? item.remaining_seconds * 1000 : null;
-  const tabLabel =
-    TIMELINE_TAB_LABELS[item.timeline_type as TimelineType] ||
-    item.timeline_type;
+  const tabLabel = reportTabLabel(item.timeline_type);
+  const description = reportDescription(item);
 
   return (
     <div className="card p-4">
-      <div className="flex items-start justify-between gap-2">
+      <div className="flex flex-wrap items-start justify-between gap-2">
         <div className="flex items-center gap-2" onClick={onOpen} role="button">
           <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-slate-100 text-xs font-bold text-slate-500">
             {rank}
@@ -191,7 +251,9 @@ function ReportCard({
           </span>
         </div>
         <div className="flex items-center gap-2">
-          <span className={statusBadgeClass(item.status)}>{reportStatusLabel(item.status)}</span>
+          <span className={`${statusBadgeClass(item.status)} whitespace-nowrap`}>
+            {reportStatusLabel(item.status)}
+          </span>
           <ActionButtons onEdit={onEdit} onDelete={onDelete} />
         </div>
       </div>
@@ -201,6 +263,7 @@ function ReportCard({
           {item.project_code} · {tabLabel}
         </p>
         <p className="mt-2 text-sm text-slate-700">{item.assign_to}</p>
+        {description && <ReportDescription text={description} />}
         <p className="mt-1 text-xs text-slate-400">
           {formatTimelineRange({ ...item, sort_order: 0 } as TimelineItem)}
         </p>
@@ -211,13 +274,15 @@ function ReportCard({
 
 export default function ReportPage() {
   const router = useRouter();
+  useIdleRefresh();
   const [items, setItems] = useState<TimelineReportItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [search, setSearch] = useState('');
-  const [statusFilter, setStatusFilter] = useState<ReportStatusFilter>('all');
+  const [statusFilter, setStatusFilter] = useState<ReportStatusFilter>(DEFAULT_REPORT_STATUS_FILTER);
   const [timelineFilter, setTimelineFilter] = useState<TimelineTabFilter>('all');
   const [editingItem, setEditingItem] = useState<TimelineReportItem | null>(null);
+  const [quickOpen, setQuickOpen] = useState(false);
 
   const itemsForStatusCounts = useMemo(
     () => items.filter((item) => matchesTimelineTabFilter(item, timelineFilter)),
@@ -251,20 +316,31 @@ export default function ReportPage() {
     );
 
     const q = search.toLowerCase().trim();
-    if (!q) return list;
+    if (q) {
+      list = list.filter(
+        (i) =>
+          i.project_title.toLowerCase().includes(q) ||
+          i.project_code.toLowerCase().includes(q) ||
+          i.assign_to.toLowerCase().includes(q) ||
+          (i.description || '').toLowerCase().includes(q) ||
+          (TIMELINE_LABELS[i.timeline_type as TimelineType] || '').toLowerCase().includes(q) ||
+          reportTabLabel(i.timeline_type).toLowerCase().includes(q)
+      );
+    }
 
-    return list.filter(
-      (i) =>
-        i.project_title.toLowerCase().includes(q) ||
-        i.project_code.toLowerCase().includes(q) ||
-        i.assign_to.toLowerCase().includes(q) ||
-        (TIMELINE_LABELS[i.timeline_type as TimelineType] || '').toLowerCase().includes(q) ||
-        (TIMELINE_TAB_LABELS[i.timeline_type as TimelineType] || '').toLowerCase().includes(q)
-    );
+    if (statusFilter === 'all') {
+      return sortReportItemsForAllFilter(list);
+    }
+
+    return list;
   }, [items, search, statusFilter, timelineFilter]);
 
-  const openProject = (projectId: number) => {
-    router.push(`/project/?id=${projectId}`);
+  const openTimelineItem = (item: TimelineReportItem) => {
+    if (String(item.timeline_type) === 'quick') {
+      setEditingItem(item);
+      return;
+    }
+    router.push(`/project/?id=${item.project_id}&tab=${item.timeline_type}&item=${item.id}`);
   };
 
   const handleSave = async (
@@ -277,7 +353,7 @@ export default function ReportPage() {
   };
 
   const handleDelete = async (item: TimelineReportItem) => {
-    const label = `${item.project_title} · ${TIMELINE_TAB_LABELS[item.timeline_type as TimelineType]}`;
+    const label = `${item.project_title} · ${reportTabLabel(item.timeline_type)}`;
     if (!confirm(`Delete this timeline item?\n\n${label}`)) return;
     try {
       await deleteTimelineItem(item.id);
@@ -291,13 +367,15 @@ export default function ReportPage() {
     const counts: Record<ReportStatusFilter, number> = {
       all: 0,
       in_progress: 0,
+      hold: 0,
       overdue: 0,
       completed: 0,
     };
 
     for (const item of itemsForStatusCounts) {
-      if (isReportItemActive(item)) counts.all++;
+      counts.all++;
       if (isReportInProgressStatus(item.status)) counts.in_progress++;
+      if (item.status === 'hold') counts.hold++;
       if (item.status === 'completed') counts.completed++;
       if (isReportItemOverdue(item)) counts.overdue++;
     }
@@ -323,18 +401,26 @@ export default function ReportPage() {
 
   const clearFilters = () => {
     setSearch('');
-    setStatusFilter('all');
+    setStatusFilter(DEFAULT_REPORT_STATUS_FILTER);
     setTimelineFilter('all');
   };
 
   const hasActiveFilters =
-    statusFilter !== 'all' || timelineFilter !== 'all' || search.trim().length > 0;
+    statusFilter !== DEFAULT_REPORT_STATUS_FILTER ||
+    timelineFilter !== 'all' ||
+    search.trim().length > 0;
 
   return (
-    <AuthGuard>
+    <MainAuthGuard>
       <div className="page-enter space-y-6">
-        <div>
-          <h1 className="page-title">Timeline Report</h1>
+        <div className="flex flex-wrap items-end justify-between gap-3">
+          <div>
+            <p className="page-kicker">Today</p>
+            <h1 className="page-title text-xl sm:text-2xl">Timeline Report</h1>
+          </div>
+          <button type="button" className="btn-primary w-full shrink-0 sm:w-auto" onClick={() => setQuickOpen(true)}>
+            Quick ticket
+          </button>
         </div>
 
         <ReportFilters
@@ -384,7 +470,7 @@ export default function ReportPage() {
                   key={item.id}
                   item={item}
                   rank={index + 1}
-                  onOpen={() => openProject(item.project_id)}
+                  onOpen={() => openTimelineItem(item)}
                   onEdit={() => setEditingItem(item)}
                   onDelete={() => handleDelete(item)}
                 />
@@ -392,7 +478,7 @@ export default function ReportPage() {
             </div>
 
             <div className="card hidden overflow-x-auto md:block">
-              <table className="w-full min-w-[980px]">
+              <table className="w-full min-w-[1020px]">
                 <thead>
                   <tr>
                     <th className="table-header w-10 text-center">#</th>
@@ -400,7 +486,7 @@ export default function ReportPage() {
                     <th className="table-header">Project</th>
                     <th className="table-header">Timeline</th>
                     <th className="table-header">Assignee</th>
-                    <th className="table-header">Status</th>
+                    <th className="table-header min-w-[7.25rem]">Status</th>
                     <th className="table-header">Schedule</th>
                     <th className="table-header text-right">Actions</th>
                   </tr>
@@ -411,7 +497,7 @@ export default function ReportPage() {
                       key={item.id}
                       item={item}
                       rank={index + 1}
-                      onOpen={() => openProject(item.project_id)}
+                      onOpen={() => openTimelineItem(item)}
                       onEdit={() => setEditingItem(item)}
                       onDelete={() => handleDelete(item)}
                     />
@@ -423,7 +509,7 @@ export default function ReportPage() {
         )}
 
         <p className="text-center text-xs text-slate-400">
-          Use Edit or Delete on each row · Click project details to open the project
+          Use Edit or Delete on each row · Click a row to open that ticket in its timeline tab
         </p>
       </div>
 
@@ -432,6 +518,11 @@ export default function ReportPage() {
         onClose={() => setEditingItem(null)}
         onSave={handleSave}
       />
-    </AuthGuard>
+      <QuickTicketModal
+        open={quickOpen}
+        onClose={() => setQuickOpen(false)}
+        onCreated={loadReport}
+      />
+    </MainAuthGuard>
   );
 }

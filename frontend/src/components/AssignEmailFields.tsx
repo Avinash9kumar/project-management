@@ -10,6 +10,7 @@ interface Props {
   ccAssign: string[];
   onMainChange: (value: string) => void;
   onCcChange: (values: string[]) => void;
+  emailNote?: boolean;
 }
 
 function displayLabel(email: string): string {
@@ -22,6 +23,7 @@ export default function AssignEmailFields({
   ccAssign,
   onMainChange,
   onCcChange,
+  emailNote = true,
 }: Props) {
   const { assigneeValues, loading } = useAssignees();
   const [ccOpen, setCcOpen] = useState(false);
@@ -82,9 +84,10 @@ export default function AssignEmailFields({
     <div className="space-y-3">
       <div>
         <label className="mb-1 block text-xs font-semibold text-slate-600">
-          Main assign * <span className="font-normal text-slate-400">(receives email)</span>
+          Main assign *{emailNote ? <span className="font-normal text-slate-400"> (receives email)</span> : <span className="font-normal text-slate-400"> (gets the notification)</span>}
         </label>
         <select
+          data-field="main-assign"
           className="input-field h-10 w-full text-sm"
           value={mainAssign}
           onChange={(e) => handleMainChange(e.target.value)}

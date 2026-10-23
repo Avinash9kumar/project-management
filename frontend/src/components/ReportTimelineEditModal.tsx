@@ -98,9 +98,18 @@ export default function ReportTimelineEditModal({ item, onClose, onSave }: Props
     setSuccess('');
   }, [timelineItem, item?.id]);
 
+  useEffect(() => {
+    if (!item) return;
+    const previous = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    return () => {
+      document.body.style.overflow = previous;
+    };
+  }, [item]);
+
   if (!item || !timelineItem) return null;
 
-  const tabLabel = TIMELINE_TAB_LABELS[timelineType] || timelineType;
+  const tabLabel = String(timelineType) === 'quick' ? 'Quick' : (TIMELINE_TAB_LABELS[timelineType] || timelineType);
 
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -162,20 +171,20 @@ export default function ReportTimelineEditModal({ item, onClose, onSave }: Props
   return (
     <div className="modal-overlay" onClick={onClose}>
       <div
-        className="modal-panel max-h-[90vh] max-w-lg overflow-y-auto"
+        className="modal-panel modal-sheet max-w-lg"
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="mb-4">
+        <div className="shrink-0 border-b border-slate-100 px-4 py-3 sm:px-6">
           <h2 className="text-lg font-bold text-slate-900">Edit timeline item</h2>
-          <p className="mt-1 text-sm text-slate-500">
+          <p className="mt-1 break-words text-sm text-slate-500">
             {item.project_title} · {item.project_code} · {tabLabel}
           </p>
         </div>
 
-        {error && <div className="alert-error mb-4">{error}</div>}
-        {success && <div className="alert-success mb-4">{success}</div>}
-
-        <form onSubmit={handleSave} className="space-y-4 overflow-visible">
+        <form onSubmit={handleSave} className="flex min-h-0 flex-1 flex-col">
+          <div className="modal-sheet-body">
+          {error && <div className="alert-error">{error}</div>}
+          {success && <div className="alert-success">{success}</div>}
           <TimelineScheduleFields
             mode={timelineMode}
             onModeChange={setTimelineMode}
@@ -224,20 +233,18 @@ export default function ReportTimelineEditModal({ item, onClose, onSave }: Props
             />
           </div>
 
-          <div className="relative z-20 overflow-visible">
-            <AssignEmailFields
-              mainAssign={mainAssign}
-              ccAssign={ccAssign}
-              onMainChange={setMainAssign}
-              onCcChange={setCcAssign}
-            />
+          <AssignEmailFields
+            mainAssign={mainAssign}
+            ccAssign={ccAssign}
+            onMainChange={setMainAssign}
+            onCcChange={setCcAssign}
+          />
           </div>
-
-          <div className="flex justify-end gap-3 pt-2">
-            <button type="button" className="btn-secondary" onClick={onClose} disabled={saving}>
+          <div className="modal-sheet-bar">
+            <button type="button" className="btn-secondary flex-1 sm:flex-none" onClick={onClose} disabled={saving}>
               Cancel
             </button>
-            <button type="submit" className="btn-primary" disabled={saving}>
+            <button type="submit" className="btn-primary flex-1 sm:flex-none" disabled={saving}>
               {saving ? 'Saving...' : 'Save changes'}
             </button>
           </div>

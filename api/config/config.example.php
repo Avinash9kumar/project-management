@@ -11,7 +11,7 @@ return [
     'host' => 'localhost',
     'database' => 'u511101901_project_manage',
     'username' => 'u511101901_project_manage',
-    'password' => 'Project_manage!11@11#11',
+    'password' => '',
     'charset' => 'utf8mb4',
 
     // App URL path (empty for local, /project-management for Hostinger)
@@ -21,18 +21,27 @@ return [
     'auth_secret' => 'change-this-to-a-random-secret-key',
     'cron_secret' => 'change-this-cron-secret-key',
 
-    // Login: any username works; password must be {username}@11#11 (no user list needed)
+    // Main app login — only these users (case-insensitive username)
+    'auth_users' => [
+        'Avinash' => 'Avinash@@11##11',
+        'Paritosh' => 'Paritosh@@11##11',
+    ],
 
     // Email invites and timeline reminders
     'mail' => [
         'enabled' => true,
-        'from_email' => 'avinash@ae-research.com',
+        'from_email' => 'projects@dash-bot.net',
         'from_name' => 'Project Timeline Tracker',
         'app_url' => 'https://dash-bot.net/project-management',
+        'smtp_host' => 'smtp.hostinger.com',
+        'smtp_port' => 465,
+        'smtp_username' => 'projects@dash-bot.net',
+        'smtp_password' => '',
         'self_email' => 'avinash@ae-research.com',
         'status_notify_email' => 'avinash@ae-research.com',
         'user_emails' => [
-            'avinash' => 'avinash@ae-research.com',
+            'Avinash' => 'avinash@ae-research.com',
+            'Paritosh' => 'paritosh@ae-research.com',
         ],
         'reminder_thresholds' => [75],
     ],

@@ -4,6 +4,7 @@ import { useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/context/AuthContext';
 import { isLoggedIn } from '@/lib/api';
+import { routerPath, stripBasePath } from '@/lib/config';
 
 export default function AuthGuard({ children }: { children: React.ReactNode }) {
   const { user, loading } = useAuth();
@@ -11,7 +12,10 @@ export default function AuthGuard({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     if (!loading && !user && !isLoggedIn()) {
-      router.replace('/login/');
+      const returnTo = encodeURIComponent(
+        stripBasePath(window.location.pathname) + window.location.search + window.location.hash
+      );
+      router.replace(`${routerPath('/login/')}?redirect=${returnTo}&mode=employee`);
     }
   }, [user, loading, router]);
 

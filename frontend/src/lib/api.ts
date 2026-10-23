@@ -1,5 +1,5 @@
 import { Project, TimelineItem, User, CustomFieldDefinition, TimelineReportItem, Assignee, CustomFieldValue } from './types';
-import { appPath } from './config';
+import { appPath, stripBasePath } from './config';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || '/api';
 
@@ -49,7 +49,10 @@ async function request<T>(
   if (res.status === 401) {
     clearToken();
     if (typeof window !== 'undefined' && !window.location.pathname.includes('/login')) {
-      window.location.href = appPath('/login/');
+      const returnTo = encodeURIComponent(
+        stripBasePath(window.location.pathname) + window.location.search + window.location.hash
+      );
+      window.location.href = `${appPath('/login/')}?redirect=${returnTo}`;
     }
     throw new Error('Session expired. Please login again.');
   }
@@ -62,17 +65,22 @@ async function request<T>(
 
   const data = await res.json();
   if (!res.ok) {
-    throw new Error(data.error || `Request failed: ${res.status}`);
+    const detail = [data.error, data.message].filter((part) => typeof part === 'string' && part.trim() !== '');
+    throw new Error(detail.join(': ') || `Request failed: ${res.status}`);
   }
 
   return data;
 }
 
 // Auth
-export async function login(username: string, password: string): Promise<{ token: string; user: User }> {
+export async function login(
+  username: string,
+  password: string,
+  loginMode: 'main' | 'employee' = 'main'
+): Promise<{ token: string; user: User }> {
   const data = await request<{ token: string; user: User }>(
     '/auth/login',
-    { method: 'POST', body: JSON.stringify({ username, password }) },
+    { method: 'POST', body: JSON.stringify({ username, password, login_mode: loginMode }) },
     true
   );
   setToken(data.token);
@@ -169,6 +177,41 @@ export async function getTimelineReport(): Promise<{
   total: number;
 }> {
   return request('/timeline/report');
+}
+
+export async function getEmployeeReport(token: string): Promise<{
+  employee_email: string;
+  items: TimelineReportItem[];
+  generated_at: string;
+  total: number;
+}> {
+  return request(`/timeline/employee-report?token=${encodeURIComponent(token)}`);
+}
+
+export async function createQuickTicket(item: {
+  title: string;
+  description?: string;
+  status?: string;
+  start_date?: string;
+  due_date?: string;
+  custom_fields?: Record<string, CustomFieldValue>;
+}): Promise<CreateTimelineItemResult> {
+  const title = item.title?.trim() ?? '';
+  if (!title) {
+    throw new Error('Assign to is required');
+  }
+
+  return request<CreateTimelineItemResult>('/timeline/quick', {
+    method: 'POST',
+    body: JSON.stringify({
+      title,
+      description: item.description?.trim() || '',
+      status: item.status || 'in_progress',
+      start_date: item.start_date,
+      due_date: item.due_date,
+      custom_fields: item.custom_fields ?? {},
+    }),
+  });
 }
 
 export async function createTimelineItem(item: {

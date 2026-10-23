@@ -11,6 +11,7 @@ const TIMELINE_TYPES = [
     'tabs',
     'invite',
     'reminders',
+    'ppt',
     'project_end_date',
 ];
 
@@ -23,7 +24,9 @@ const TIMELINE_LABELS = [
     'tabs' => 'Tabs Timeline',
     'invite' => 'Invite Timeline',
     'reminders' => 'Reminders Timeline',
+    'ppt' => 'PPT Timeline',
     'project_end_date' => 'Project End Date',
+    'quick' => 'Quick ticket',
 ];
 
 const VALID_STATUSES = ['pending', 'in_progress', 'hold', 'completed'];
